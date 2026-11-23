@@ -85,7 +85,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Pareamento com o PC'), findsOneWidget);
-      expect(find.text('Abrir laboratório'), findsOneWidget);
+      expect(find.text('Ler QR Code'), findsOneWidget);
+      expect(find.text('Conectar por IP'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

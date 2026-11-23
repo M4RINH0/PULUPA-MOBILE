@@ -53,6 +53,9 @@ class PlatformSensors implements SensorSource {
 
   static Future<bool?> wifiConnected() => _device.invokeMethod<bool>('wifi');
 
+  static Future<String?> deviceLabel() =>
+      _device.invokeMethod<String>('deviceLabel');
+
   static Future<Map<String, Object?>> loadSettings() async =>
       await _device.invokeMapMethod<String, Object?>('loadSettings') ?? {};
 

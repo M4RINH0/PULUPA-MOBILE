@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../core/motion_math.dart';
 import '../features/calibration/calibration.dart';
+import '../features/gestures/motion_gestures.dart';
 import '../features/sensors/motion_processor.dart';
 import '../features/sensors/platform_sensors.dart';
 import '../features/sensors/sensor_source.dart';
@@ -19,6 +20,7 @@ class MotionController with WidgetsBindingObserver {
   final status = ValueNotifier<int>(0);
   final telemetry = ValueNotifier<int>(0);
   final preview = ValueNotifier<Rotation>(Rotation.identity);
+  final gestures = MotionGestures();
   final _clock = clock.stopwatch()..start();
   final _wifiClock = clock.stopwatch()..start();
 
@@ -26,6 +28,7 @@ class MotionController with WidgetsBindingObserver {
   SensorCapabilities? capabilities;
   String? error;
   bool? wifi;
+  String deviceLabel = 'Dispositivo móvel';
   MotionProcessor? _processor;
   StreamSubscription<SensorReading>? _subscription;
   Timer? _renderTimer;
@@ -42,6 +45,9 @@ class MotionController with WidgetsBindingObserver {
     _ => null,
   };
   Calibration? get calibration => _processor?.calibration;
+  MotionFrame? get latestMotionFrame =>
+      _processor?.frameAt(_clock.elapsedMicroseconds);
+  bool get isCalibrated => calibration?.reference != null;
   OrientationSource get orientationSource =>
       _processor?.orientationSource ?? OrientationSource.unavailable;
   Rotation? get orientation =>
@@ -82,6 +88,28 @@ class MotionController with WidgetsBindingObserver {
     if (_disposed) return;
     _ready = true;
     _updateCapture();
+    unawaited(_readDeviceLabel());
+  }
+
+  Future<void> _readDeviceLabel() async {
+    try {
+      final label = simulator == null
+          ? await PlatformSensors.deviceLabel()
+          : 'IMU simulada';
+      if (_disposed || label == null || label.trim().isEmpty) return;
+      deviceLabel = String.fromCharCodes(label.trim().runes.take(64));
+      status.value++;
+    } on PlatformException {
+      // The device label is optional.
+    } on MissingPluginException {
+      // The simulator can run without a native bridge.
+    }
+  }
+
+  void feedback() {
+    if (settings.haptics && _foreground) {
+      unawaited(HapticFeedback.lightImpact());
+    }
   }
 
   @override
@@ -102,6 +130,7 @@ class MotionController with WidgetsBindingObserver {
     final generation = ++_generation;
     _renderTimer?.cancel();
     _processor = null;
+    gestures.reset();
     preview.value = Rotation.identity;
     status.value++;
     telemetry.value++;
@@ -129,11 +158,16 @@ class MotionController with WidgetsBindingObserver {
                     processor.frameAt(now) == null) {
                   processor.calibration.interrupt();
                 }
-                processor.ingest(reading, now);
+                final frame = processor.ingest(reading, now);
+                if (frame != null) {
+                  gestures.update(
+                    frame,
+                    calibrated: processor.calibration.reference != null,
+                  );
+                }
                 if (before == CalibrationPhase.collecting &&
-                    processor.calibration.phase == CalibrationPhase.accepted &&
-                    settings.haptics) {
-                  unawaited(HapticFeedback.lightImpact());
+                    processor.calibration.phase == CalibrationPhase.accepted) {
+                  feedback();
                 }
               },
               onError: (Object failure) => _captureFailed(generation, failure),
@@ -161,6 +195,7 @@ class MotionController with WidgetsBindingObserver {
     debugPrint('PULUPA! sensores: $failure');
     error = 'Não foi possível iniciar ou manter a captura dos sensores.';
     _processor = null;
+    gestures.reset();
     preview.value = Rotation.identity;
     status.value++;
     telemetry.value++;
@@ -170,7 +205,10 @@ class MotionController with WidgetsBindingObserver {
     final processor = _processor;
     final time = _clock.elapsedMicroseconds;
     if (processor != null) {
-      if (processor.frameAt(time) == null) processor.calibration.interrupt();
+      if (processor.frameAt(time) == null) {
+        processor.calibration.interrupt();
+        gestures.reset();
+      }
       preview.value = processor.orientationAt(time) ?? Rotation.identity;
     }
     if (++_ticks % 3 == 0) telemetry.value++;
@@ -207,6 +245,7 @@ class MotionController with WidgetsBindingObserver {
 
   void clearCalibration() {
     _processor?.clearCalibration();
+    gestures.reset();
     telemetry.value++;
   }
 

@@ -9,10 +9,22 @@ flutter test
 
 | Fase | Verificações automatizadas |
 | --- | --- |
-| 1 — Fundação | Inicial, navegação, tela de pareamento em largura reduzida e escala de texto aumentada. |
+| 1 — Fundação | Inicial, navegação, campos de pareamento em largura reduzida e escala de texto aumentada. |
 | 2 — Sensores | Fluxo do simulador, frequência medida, leituras expiradas, sensores ausentes, fusão por giroscópio e troca de fonte. |
 | 3 — Calibração | Produto de Hamilton, mudança de base, estabilidade, recalibração, rejeição de picos, janela incompleta, filtros e fluxo pelas telas. |
-| Contratos da fase 4 | QR válido e inválido, validação de pacotes, IDs de quatro jogadores e limite de tentativas da política de reconexão. |
+| 4 — Conexão | QR válido e inválido, pacote, pareamento, stream WebSocket, háptica, confirmação de calibração e reconexão com o mesmo jogador. |
+| 5 — Multiplayer | Quatro jogadores, isolamento de amostras, sessão lotada, expiração, desconexão e reuso de slots. |
+| 6 — Otimização | Controle de frequência, substituição da amostra pendente, gestos e benchmark com quatro emissores. |
+| 7 — Godot | Endpoint local de snapshot e identidade dos fluxos. |
+
+Execute também no servidor.
+
+```powershell
+cd motion-server
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m app.simulator --local-server --players 4 --seconds 12
+```
 
 ## Roteiro em um Android físico
 
@@ -25,6 +37,16 @@ flutter test
 
 Repita o roteiro de calibração em um emulador com `--dart-define=PULUPA_SIMULATE=true`, usando o botão **Simular movimento** para alternar entre os estados. Valide a orientação e as taxas reais num aparelho físico.
 
-## Medições após o pareamento
+## Verificação pela rede local
 
-Quando o servidor estiver disponível, registre a taxa solicitada e recebida por jogador, a quantidade de pacotes e RTT médio e p95 em sessões comparáveis. Use o mesmo relógio monotônico para medir o ida e volta. A perda observável usa lacunas de sequência entre pacotes aceitos, documentando a diferença entre descartes no emissor e lacunas no receptor.
+1. Abra o painel no PC e pareie o primeiro celular por QR. Pareie um segundo digitando IP, porta e código do painel.
+2. Calibre os dois em posições confortáveis. Mova um de cada vez e confirme que só o modelo correspondente muda.
+3. Na tela **Laboratório**, compare as métricas com as do painel no PC. Alterne 30, 60 e 100 Hz nas configurações e registre a frequência real, média e p95 de RTT.
+4. Interrompa e restabeleça o Wi-Fi num aparelho dentro da janela de reconexão. Verifique se ele recupera o mesmo jogador e se o outro mantém o fluxo.
+5. Use **Testar toque** e **Desconectar** na ficha de um jogador. Verifique se só esse aparelho recebe a ação.
+
+## Medição em loopback
+
+Uma execução de 12 s com quatro emissores a 60 Hz neste PC recebeu 716 confirmações por jogador, cerca de 59,6 Hz. O RTT médio de movimento ficou entre 1,11 e 1,70 ms por jogador e o p95 entre 1,56 e 2,42 ms. O RTT foi medido no emissor desde o início do envio até receber `motion_ack`. As medições cobrem o servidor e clientes simulados no mesmo computador. Valores reais dependem dos aparelhos, do Wi-Fi e da taxa escolhida.
+
+As telas usam o RTT de `ping`/`pong`. O jitter é a média das diferenças absolutas entre RTTs sucessivos. Lacunas entre sequências aceitas medem ausências no fluxo de aplicação. A captura mantém a última amostra e atribui a sequência na hora do envio, por isso descartar amostras antes de enviar não conta como lacuna.

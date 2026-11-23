@@ -3,14 +3,21 @@ import 'package:material_ui/material_ui.dart';
 import '../../app/motion_controller.dart';
 import '../../core/motion_math.dart';
 import '../../core/theme/components.dart';
+import '../connection/connection_controller.dart';
+import '../gestures/motion_gestures.dart';
 import '../sensors/sensor_source.dart';
 import 'phone_model.dart';
 import 'readouts.dart';
 
 class LabPage extends StatelessWidget {
-  const LabPage({super.key, required this.controller});
+  const LabPage({
+    super.key,
+    required this.controller,
+    required this.connection,
+  });
 
   final MotionController controller;
+  final ConnectionController connection;
 
   @override
   Widget build(BuildContext context) => PageBody(
@@ -49,6 +56,15 @@ class LabPage extends StatelessWidget {
               quaternion: true,
             ),
             Panel(
+              child: StatusLine(
+                icon: Icons.gesture_rounded,
+                label: 'Gestos experimentais',
+                detail: controller.gestures.active.isEmpty
+                    ? 'Nenhum gesto ativo'
+                    : controller.gestures.active.map(_gestureLabel).join(' · '),
+              ),
+            ),
+            Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 spacing: 8,
@@ -71,19 +87,52 @@ class LabPage extends StatelessWidget {
                 ],
               ),
             ),
-            const Panel(
-              child: StatusLine(
-                icon: Icons.link_off_rounded,
-                label: 'Transmissão para o PC',
-                detail: 'Frequência de envio, pacotes, latência, jitter e perda ficam disponíveis após o pareamento.',
-              ),
-            ),
           ],
+        ),
+      ),
+      ListenableBuilder(
+        listenable: connection,
+        builder: (context, _) => Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 8,
+            children: [
+              Text(
+                'Transmissão para o PC',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              Text(switch (connection.phase) {
+                ConnectionPhase.connected => 'Conectado',
+                ConnectionPhase.connecting => 'Conectando',
+                ConnectionPhase.retrying => 'Reconectando',
+                _ => connection.error ?? 'Sem conexão',
+              }),
+              Readouts(
+                values: {
+                  'Envio': '${decimal(connection.actualHz, 1)} Hz',
+                  'Pacotes': '${connection.sentPackets}',
+                  'RTT médio': '${decimal(connection.rttMean, 1)} ms',
+                  'RTT p95': '${decimal(connection.rttP95, 1)} ms',
+                  'Jitter': '${decimal(connection.jitter, 1)} ms',
+                  'Lacunas': connection.loss == null
+                      ? '—'
+                      : '${decimal(connection.loss! * 100, 1)}%',
+                },
+              ),
+            ],
+          ),
         ),
       ),
     ],
   );
 }
+
+String _gestureLabel(GestureKind kind) => switch (kind) {
+  GestureKind.abruptMotion => 'Movimento brusco',
+  GestureKind.quickRotation => 'Rotação rápida',
+  GestureKind.tilt => 'Inclinação',
+  GestureKind.swing => 'Balanço',
+};
 
 class _AxisPanel extends StatelessWidget {
   const _AxisPanel({

@@ -1,6 +1,6 @@
 # PULUPA Motion Protocol v1
 
-Contrato para a fase 4. O app das fases 1–3 inclui validação local de convites, endpoint manual e pacotes de movimento. O transporte, a autenticação e o servidor serão implementados na fase 4.
+Este protocolo liga o PULUPA Controller ao servidor local. O painel do PC mostra a sessão em `http://127.0.0.1:8765`.
 
 ## Conexão e autenticação
 
@@ -14,7 +14,7 @@ pulupa://pair?v=1&host=192.168.1.20&port=8765&session=dev_session_1234567890&tic
 
 Cada campo é obrigatório e ocorre uma vez. `session` usa de 22 a 64 caracteres base64url sem padding e `ticket` de 32 a 128. O QR tem limite de 512 caracteres. O aplicativo valida esquema, autoridade, versão, endereço, porta e formato dos campos antes de conectar. Digitação manual usa IP e porta e solicita um código temporário exibido pelo servidor.
 
-Use mensagens WebSocket de texto com um objeto JSON UTF-8 por mensagem. Todo objeto traz `v: 1` e `type`. A primeira mensagem do cliente é `hello`, com `name` (1 a 32 caracteres visíveis) e uma credencial.
+Use mensagens WebSocket de texto de até 1.024 bytes com um objeto JSON UTF-8 por mensagem. Todo objeto traz `v: 1` e `type`. A primeira mensagem do cliente é `hello`, com `name` (1 a 32 caracteres visíveis), rótulo opcional `device` (até 64) e uma credencial.
 
 | Campo de `hello` | Significado |
 | --- | --- |
@@ -22,9 +22,9 @@ Use mensagens WebSocket de texto com um objeto JSON UTF-8 por mensagem. Todo obj
 | `code` | Fluxo manual. O servidor resolve a sessão ativa. |
 | `session` e `resume` | Reconexão de jogador já autorizado. |
 
-O servidor responde com `welcome` contendo `session`, `player`, `name`, `color` e `resume`. `player` é um inteiro de 1 a 4, vinculado à conexão no servidor. As cores por slot são `#345CFF`, `#FF55A5`, `#FFD928` e `#8B5CF6`. Em reconexão autenticada, preserve o slot, estado e sequência do cliente e renove o token. Use `error` com `code` para rejeições, incluindo `invalid_invite`, `session_expired` e `session_full`.
+O servidor responde com `welcome` contendo `session`, `player`, `player_key`, `name`, `color` e `resume`. `player` é o slot inteiro de 1 a 4, vinculado à conexão no servidor. `player_key` identifica unicamente o ocupante na sessão e permanece na reconexão. É gerada outra chave ao reutilizar o slot para um jogador novo. As cores por slot são `#345CFF`, `#FF55A5`, `#FFD928` e `#8B5CF6`. A reconexão autenticada preserva o slot, estado e sequência do cliente e renova o token. Rejeições incluem `error` com `code`, como `invalid_invite`, `session_expired` e `session_full`.
 
-Emita convites aleatórios de curta duração e limite o uso de códigos manuais por origem e sessão. Expire a sessão e seus tokens, mantenha credenciais em memória e exclua-as de logs. O servidor valida se as mensagens do cliente correspondem ao jogador autenticado na conexão. Restrinja a interface de gerenciamento ao PC anfitrião.
+O ticket e o código manual de seis dígitos expiram em dois minutos. Uma sessão dura até duas horas. Após perda de conexão, o servidor reserva o slot por até um minuto para o token de reconexão. O servidor limita tentativas inválidas por origem, mantém credenciais em memória e valida se as mensagens do cliente correspondem ao jogador autenticado na conexão. O painel e o canal Godot são acessíveis pelo loopback.
 
 ## Movimento
 
@@ -48,11 +48,15 @@ O referencial é destro, com X à direita, Y para cima e −Z à frente na conve
 
 Valide inteiros no intervalo `0..2^53−1` para sequência e timestamp, vetores finitos, desvio de norma quadrada do quaternion de até 0,02 em relação a 1, e magnitudes de até 500 m/s² e 100 rad/s. Normalize o quaternion aceito. Descarte pacotes repetidos ou anteriores ao mais recente para o mesmo jogador. Limite o tamanho das mensagens e a taxa por jogador. Comece com envio configurável em 60 Hz e limite de entrada em 120 pacotes de movimento por segundo com tolerância curta a rajadas.
 
-O transporte retém uma amostra pendente por jogador. Se uma mais recente chegar enquanto o envio estiver ocupado, ela substitui a anterior. Ao testar um canal UDP, mantenha a autoridade da sessão em WebSocket e associe cada datagrama autenticado ao mesmo jogador e sequência.
+O servidor devolve `motion_ack` com `seq`, `packets` e `missing`. O cliente mantém somente uma transmissão de movimento sem confirmação e escolhe a amostra mais recente disponível após o ACK. O servidor descarta amostras mais antigas e responde com ACK à sequência repetida para liberar o cliente. Um eventual canal UDP mantém a sessão em WebSocket e deve autenticar e associar cada datagrama ao mesmo jogador e sequência.
 
 ## Controle e métricas
 
 - `calibration` leva `calibrated` do cliente ao servidor. O servidor devolve `calibration_ack` com o estado reconhecido.
-- `ping` e `pong` carregam o mesmo `id`. O iniciador mede RTT no próprio relógio monotônico e calcula média, percentil 95 e variação entre amostras. Conte pacotes e lacunas de sequência separadamente por jogador.
-- `haptic` usa uma lista fixa de eventos, começando por `confirm`. `disconnect` encerra o jogador de forma explícita. Valide cada comando por tipo e ignore tipos desconhecidos.
+- `ping` e `pong` carregam o mesmo `id`. O iniciador mede RTT no próprio relógio monotônico e calcula média, percentil 95 e variação entre amostras. A razão `missing/(packets+missing)` mede lacunas de sequência observadas, sem estimar a perda física de pacotes TCP.
+- `haptic` aceita o evento `confirm`. `disconnect` encerra o jogador de forma explícita e libera o slot.
 - Em desconexão transitória, aguarde 0,5 s, 1 s, 2 s, 4 s e 8 s nas cinco tentativas de reconexão. Cancele em desconexão explícita, expiração ou credencial recusada.
+
+## Consulta pelo Godot
+
+Em `ws://127.0.0.1:8765/ws/game`, envie `{"v":1,"type":"snapshot"}` e aguarde a resposta antes de consultar de novo. A resposta contém `v`, `type: "snapshot"`, `session` e a lista `players`. Cada elemento inclui `player`, `player_key`, `name`, `color`, `connected`, `calibrated` e o último objeto `motion` válido. Esse objeto expira em 350 ms. Veja a [integração em Godot 4](../docs/godot.md).

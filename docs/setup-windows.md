@@ -19,6 +19,19 @@ Use um caminho curto, sem `!`, para compilar o app, por exemplo `C:\src\pulupa`.
 
 ## Rede e permissões
 
-Nas fases 1 a 3 o app usa `ACCESS_NETWORK_STATE` para indicar Wi-Fi. A captura IMU usa sensores nativos e dispensa permissão de câmera e localização. O diagnóstico de rede informa a presença de Wi-Fi, sem certificar que um PC está acessível.
+O Android usa `ACCESS_NETWORK_STATE` para indicar Wi-Fi e `INTERNET` para conversar com o PC. A permissão de câmera é solicitada ao abrir **Ler QR Code**. A conexão manual aceita IP, porta e código temporário mesmo com a câmera indisponível. O app usa o modelo do dispositivo como rótulo no painel. IP, códigos, tokens, leituras e nomes de jogador não são persistidos pelo app.
 
-A partir da fase 4, a câmera será solicitada ao escolher a leitura de QR. O contrato prevê WebSocket em TCP 8765. Quando o servidor existir, permita conexões de entrada nessa porta no perfil **Privado** do Firewall do Windows e limite a origem à sub-rede local. Evite redirecionamento de portas no roteador.
+O servidor usa TCP 8765 por padrão e mantém o painel em `127.0.0.1`. No Firewall do Windows, permita conexões de entrada nessa porta no perfil **Privado**, com origem na sub-rede local. Use o IPv4 que aparece em `ipconfig` para a interface usada pelos jogadores. VPNs e redes de convidados com isolamento entre clientes podem impedir a descoberta do PC. Evite redirecionamento de portas no roteador.
+
+Em caso de dúvida, confirme pelo navegador do PC que `http://127.0.0.1:8765` abre localmente. No celular, confirme que o IP usado coincide com o do painel e que o sistema está na mesma rede. O Wi-Fi ativo é apenas um indicador de rede disponível.
+
+## Servidor e simulador
+
+```powershell
+cd motion-server
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m app --lan-ip 192.168.1.20
+```
+
+Use `--local-only` para testes restritos ao PC. Um emulador Android padrão pode usar `10.0.2.2` no campo de IP para acessar o loopback do host. Para testar no aparelho físico, informe o IPv4 local do PC, mantenha o servidor aberto e use o código atual do painel.

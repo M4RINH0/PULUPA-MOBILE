@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -31,10 +32,14 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "sensors" -> result.success(sensors.capabilities())
                     "wifi" -> result.success(hasWifi())
+                    "deviceLabel" -> result.success(
+                        listOf(Build.MANUFACTURER, Build.MODEL).distinct().joinToString(" ").trim()
+                    )
                     "loadSettings" -> result.success(preferences.all)
                     "saveSettings" -> {
                         val editor = preferences.edit()
                         call.argument<Int>("captureHz")?.let { editor.putInt("captureHz", it) }
+                        call.argument<Int>("sendHz")?.let { editor.putInt("sendHz", it) }
                         call.argument<Int>("smoothingMs")?.let { editor.putInt("smoothingMs", it) }
                         call.argument<Double>("deadZoneDegrees")?.let {
                             editor.putFloat("deadZoneDegrees", it.toFloat())

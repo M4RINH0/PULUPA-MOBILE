@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PULUPA! · Laboratório de movimento</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+  <script src="/assets/dashboard.js" defer></script>
+</head>
+<body>
+  <header>
+    <div><strong>PULUPA!</strong><span>Laboratório de movimento</span></div>
+    <button id="new-session" type="button">Nova sessão</button>
+  </header>
+  <main>
+    <aside class="panel">
+      <h1>Conectar controles</h1>
+      <p>Abra o PULUPA Controller no celular e leia o QR Code.</p>
+      <img id="qr" alt="QR Code de pareamento" width="228" height="228" hidden>
+      <p id="invite-status" aria-live="polite">Carregando sessão…</p>
+      <dl>
+        <div><dt>IP do PC</dt><dd id="host">—</dd></div>
+        <div><dt>Porta</dt><dd id="port">—</dd></div>
+        <div><dt>Código manual</dt><dd id="code">—</dd></div>
+      </dl>
+    </aside>
+    <section aria-labelledby="players-heading">
+      <div class="section-heading">
+        <h2 id="players-heading">Jogadores</h2>
+        <span id="count">0 / 4</span>
+      </div>
+      <p id="error" role="status" hidden></p>
+      <div id="players" class="players"></div>
+    </section>
+  </main>
+  <template id="player-card">
+    <article class="panel player">
+      <div class="player-title">
+        <div>
+          <h3></h3>
+          <p class="device"></p>
+        </div>
+        <span class="state"></span>
+      </div>
+      <div class="stage" role="img" aria-label="Orientação do celular">
+        <div class="camera"><div class="phone">
+          <span class="front"></span><span class="back"></span>
+        </div></div>
+      </div>
+      <p class="signal"></p>
+      <dl class="metrics">
+        <div><dt>Recepção</dt><dd class="hz"></dd></div>
+        <div><dt>Pacotes</dt><dd class="packets"></dd></div>
+        <div><dt>RTT médio</dt><dd class="rtt"></dd></div>
+        <div><dt>RTT p95</dt><dd class="p95"></dd></div>
+        <div><dt>Jitter</dt><dd class="jitter"></dd></div>
+        <div><dt>Lacunas</dt><dd class="loss"></dd></div>
+      </dl>
+      <div class="actions">
+        <button class="haptic" type="button">Testar toque</button>
+        <button class="disconnect" type="button">Desconectar</button>
+      </div>
+    </article>
+  </template>
+</body>
+</html>

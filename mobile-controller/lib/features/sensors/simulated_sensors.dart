@@ -15,6 +15,7 @@ class SimulatedSensors implements SensorSource {
   );
 
   bool moving = false;
+  final _stopwatch = clock.stopwatch()..start();
 
   @override
   Future<SensorCapabilities> capabilities() async => hardware;
@@ -26,12 +27,11 @@ class SimulatedSensors implements SensorSource {
     controller = StreamController(
       sync: true,
       onListen: () {
-        final stopwatch = clock.stopwatch()..start();
         timer = Timer.periodic(Duration(microseconds: 1000000 ~/ requestedHz), (
           _,
         ) {
           for (final reading in sampleAt(
-            stopwatch.elapsedMicroseconds,
+            _stopwatch.elapsedMicroseconds,
             moving: moving,
           )) {
             controller.add(reading);

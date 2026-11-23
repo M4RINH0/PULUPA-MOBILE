@@ -54,6 +54,35 @@ class SettingsPage extends StatelessWidget {
             Panel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                children: [
+                  Text('Taxa de envio', style: title),
+                  const Text(
+                    'O app envia a leitura mais recente disponível ao PC.',
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final hz in ControllerSettings.sendRates)
+                        ChoiceChip(
+                          label: Text('$hz Hz'),
+                          selected: hz == settings.sendHz,
+                          onSelected: (selected) {
+                            if (!selected) return;
+                            controller.updateSettings(
+                              settings.copyWith(sendHz: hz),
+                            );
+                            unawaited(controller.saveSettings());
+                          },
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Suavização · ${settings.smoothingMs} ms', style: title),
                   const Text(
@@ -94,7 +123,7 @@ class SettingsPage extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Feedback háptico'),
                 subtitle: const Text(
-                  'Confirma a calibração com um toque breve.',
+                  'Usa toques breves para conexão, calibração e eventos do PC.',
                 ),
                 value: settings.haptics,
                 onChanged: (value) {

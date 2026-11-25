@@ -38,29 +38,30 @@ void _reply(
 
 void main() {
   test(
-    'transport keeps only the freshest sample while waiting for an ack',
+    'transport keeps one packet in flight and refuses others until its ack',
     () async {
       final writes = <MotionPacket>[];
       final transport = WebSocketMotionTransport(
         (text) => writes.add(MotionPacket.decode(text)),
       );
-      for (var sequence = 0; sequence < 3; sequence++) {
-        transport.offer(
-          MotionPacket.fromDevice(
-            sessionId: _session,
-            playerId: 2,
-            sequence: sequence,
-            frame: _frame(sequence),
-            calibrated: true,
-          ),
-        );
-      }
+      MotionPacket packet(int sequence) => MotionPacket.fromDevice(
+        sessionId: _session,
+        playerId: 2,
+        sequence: sequence,
+        frame: _frame(sequence),
+        calibrated: true,
+      );
+      expect(transport.offer(packet(0)), isTrue);
+      expect(transport.offer(packet(1)), isFalse);
       expect(writes.map((packet) => packet.sequence), [0]);
       expect(transport.acknowledge(1), isFalse);
       expect(transport.acknowledge(0), isTrue);
+      expect(transport.available, isTrue);
+      expect(transport.offer(packet(2)), isTrue);
       expect(writes.map((packet) => packet.sequence), [0, 2]);
       await transport.close();
       expect(transport.available, isFalse);
+      expect(transport.offer(packet(3)), isFalse);
     },
   );
 
@@ -96,8 +97,9 @@ void main() {
       },
       isCalibrated: () => processor.calibration.reference != null,
       onFeedback: () => haptics.add(1),
-      open: (_) =>
-          WebSocket.connect('ws://127.0.0.1:${server.port}/ws/controller'),
+      open: (_) async => IoControllerSocket(
+        await WebSocket.connect('ws://127.0.0.1:${server.port}/ws/controller'),
+      ),
     );
     link.addListener(() => states.add(link.phase));
     addTearDown(() async {
@@ -158,9 +160,10 @@ void main() {
       'Jogador teste',
       'Teste',
     );
-    await resumed.future.timeout(const Duration(seconds: 6));
+    await resumed.future.timeout(const Duration(seconds: 4));
     await Future<void>.delayed(const Duration(milliseconds: 60));
     expect(welcomeMessages.first['code'], '123456');
+    expect(welcomeMessages.first['attempt'], matches(r'^[A-Za-z0-9_-]{16,64}$'));
     expect(welcomeMessages.last['resume'], _initialToken);
     expect(welcomeMessages.last['session'], _session);
     expect(welcomeMessages.last.containsKey('code'), isFalse);

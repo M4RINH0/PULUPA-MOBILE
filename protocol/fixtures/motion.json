@@ -1,0 +1,1278 @@
+{
+  "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+  "player": 1,
+  "valid": [
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 0,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "accel": [
+        0,
+        9.81,
+        0
+      ],
+      "gyro": [
+        0,
+        0,
+        0
+      ],
+      "calibrated": true,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 1,
+      "t_us": 17000,
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "accel": [
+        0.0,
+        9.80665,
+        0.0
+      ],
+      "gyro": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "calibrated": true,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 2,
+      "t_us": 1000,
+      "q": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "accel": [
+        -0.5,
+        -9.8,
+        0.00125
+      ],
+      "gyro": [
+        -1.5,
+        0.25,
+        3
+      ],
+      "calibrated": false,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 3,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        1.0099
+      ],
+      "accel": [
+        0,
+        9.81,
+        0
+      ],
+      "gyro": [
+        0,
+        0,
+        0
+      ],
+      "calibrated": true,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 4,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        0.99
+      ],
+      "accel": [
+        0,
+        9.81,
+        0
+      ],
+      "gyro": [
+        0,
+        0,
+        0
+      ],
+      "calibrated": true,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 5,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "accel": [
+        300,
+        400,
+        0
+      ],
+      "gyro": [
+        60,
+        0,
+        80
+      ],
+      "calibrated": true,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 6,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "accel": [
+        0,
+        0,
+        -500
+      ],
+      "gyro": [
+        0,
+        -100,
+        0
+      ],
+      "calibrated": true,
+      "valid": true
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 7,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "accel": [
+        0,
+        0,
+        0
+      ],
+      "gyro": [
+        0,
+        0,
+        0
+      ],
+      "calibrated": false,
+      "valid": false
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 8,
+      "t_us": 1000,
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "accel": [
+        0,
+        0,
+        0
+      ],
+      "gyro": [
+        0,
+        0,
+        0
+      ],
+      "calibrated": true,
+      "valid": false
+    },
+    {
+      "v": 1,
+      "type": "motion",
+      "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+      "player": 1,
+      "seq": 9007199254740991,
+      "t_us": 9007199254740991,
+      "q": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "accel": [
+        0,
+        9.81,
+        0
+      ],
+      "gyro": [
+        0,
+        0,
+        0
+      ],
+      "calibrated": true,
+      "valid": true
+    }
+  ],
+  "invalid": [
+    {
+      "reason": "campo extra",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true,
+        "extra": 1
+      }
+    },
+    {
+      "reason": "campo valid ausente",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true
+      }
+    },
+    {
+      "reason": "campo t_us ausente",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "versão diferente de 1",
+      "packet": {
+        "v": 2,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "tipo diferente de motion",
+      "packet": {
+        "v": 1,
+        "type": "ping",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "sessão diferente da autenticada",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "BBBBBBBBBBBBBBBBBBBBBBBB",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "sessão não textual",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": 123,
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "jogador diferente do autenticado",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 2,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "jogador zero",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 0,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "jogador acima de 4",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 5,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "jogador booleano",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": true,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "seq negativo",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": -1,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "seq acima de 2^53-1",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 9007199254740992,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "seq fracionário",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 1.5,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "seq em ponto flutuante",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 1.0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "seq textual",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": "1",
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "t_us negativo",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": -1,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "t_us acima de 2^53-1",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 9007199254740992,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "calibrated numérico",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": 1,
+        "valid": true
+      }
+    },
+    {
+      "reason": "valid numérico",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": 0
+      }
+    },
+    {
+      "reason": "valid nulo",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": null
+      }
+    },
+    {
+      "reason": "q com 3 componentes",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "q com 5 componentes",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "q nulo",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "norma quadrada de q acima de 1,02",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1.0101
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "norma quadrada de q abaixo de 0,98",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          0.9899
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "componente de q textual",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          "1"
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "componente de q nula",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          null,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "q não é lista",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": {
+          "w": 1
+        },
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "accel acima de 500 m/s²",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          300,
+          400.001,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "componente de accel acima de 500",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          0,
+          500.5
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "accel com 2 componentes",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81
+        ],
+        "gyro": [
+          0,
+          0,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "gyro acima de 100 rad/s",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          60,
+          80.001,
+          0
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "componente de gyro abaixo de -100",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          -100.5
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    },
+    {
+      "reason": "gyro booleano",
+      "packet": {
+        "v": 1,
+        "type": "motion",
+        "session": "AAAAAAAAAAAAAAAAAAAAAAAA",
+        "player": 1,
+        "seq": 0,
+        "t_us": 1000,
+        "q": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "accel": [
+          0,
+          9.81,
+          0
+        ],
+        "gyro": [
+          0,
+          0,
+          true
+        ],
+        "calibrated": true,
+        "valid": true
+      }
+    }
+  ]
+}

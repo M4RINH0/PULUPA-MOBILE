@@ -8,15 +8,21 @@ import '../core/motion_math.dart';
 import '../features/calibration/calibration.dart';
 import '../features/gestures/motion_gestures.dart';
 import '../features/sensors/motion_processor.dart';
-import '../features/sensors/platform_sensors.dart';
+import '../features/sensors/device_bridge.dart';
 import '../features/sensors/sensor_source.dart';
 import '../features/sensors/simulated_sensors.dart';
 import 'controller_settings.dart';
 
 class MotionController with WidgetsBindingObserver {
-  MotionController(this.source);
+  MotionController(this.source, {DeviceBridge? device})
+    : device = device ?? const PlatformDeviceBridge();
+
+  /// Without complete frames for this long, the render tick treats the
+  /// stream as interrupted. Sensor-timestamp gaps are checked on ingest.
+  static const renderStaleUs = 500000;
 
   final SensorSource source;
+  final DeviceBridge device;
   final status = ValueNotifier<int>(0);
   final telemetry = ValueNotifier<int>(0);
   final preview = ValueNotifier<Rotation>(Rotation.identity);
@@ -30,6 +36,10 @@ class MotionController with WidgetsBindingObserver {
   bool? wifi;
   String deviceLabel = 'Dispositivo móvel';
   MotionProcessor? _processor;
+  // Owned here, not by the processor, so the neutral pose survives capture
+  // restarts caused by lifecycle changes.
+  Calibration _calibration = Calibration();
+  bool _settingsDirty = false;
   StreamSubscription<SensorReading>? _subscription;
   Timer? _renderTimer;
   Future<void> _transition = Future.value();
@@ -44,7 +54,7 @@ class MotionController with WidgetsBindingObserver {
     final SimulatedSensors simulator => simulator,
     _ => null,
   };
-  Calibration? get calibration => _processor?.calibration;
+  Calibration? get calibration => _calibration;
   MotionFrame? get latestMotionFrame =>
       _processor?.frameAt(_clock.elapsedMicroseconds);
   bool get isCalibrated => calibration?.reference != null;
@@ -77,9 +87,9 @@ class MotionController with WidgetsBindingObserver {
       _ => true,
     };
     try {
-      settings = ControllerSettings.fromMap(
-        await PlatformSensors.loadSettings(),
-      );
+      final loaded = ControllerSettings.fromMap(await device.loadSettings());
+      // Changes made while loading win over stored values.
+      if (!_settingsDirty) settings = loaded;
     } on PlatformException catch (exception) {
       debugPrint('PULUPA! preferências: ${exception.code}');
     } on MissingPluginException {
@@ -94,7 +104,7 @@ class MotionController with WidgetsBindingObserver {
   Future<void> _readDeviceLabel() async {
     try {
       final label = simulator == null
-          ? await PlatformSensors.deviceLabel()
+          ? await device.deviceLabel()
           : 'IMU simulada';
       if (_disposed || label == null || label.trim().isEmpty) return;
       deviceLabel = String.fromCharCodes(label.trim().runes.take(64));
@@ -126,10 +136,16 @@ class MotionController with WidgetsBindingObserver {
     if (_ready) _updateCapture();
   }
 
-  void _updateCapture() {
+  void _updateCapture({bool resetCalibration = false}) {
     final generation = ++_generation;
     _renderTimer?.cancel();
     _processor = null;
+    if (resetCalibration) {
+      _calibration = Calibration();
+    } else {
+      // A measurement cannot span a capture restart; the reference can.
+      _calibration.interrupt();
+    }
     gestures.reset();
     preview.value = Rotation.identity;
     status.value++;
@@ -143,7 +159,7 @@ class MotionController with WidgetsBindingObserver {
         final hardware = await source.capabilities();
         if (!_isCurrent(generation)) return;
         capabilities = hardware;
-        final processor = MotionProcessor(hardware)
+        final processor = MotionProcessor(hardware, calibration: _calibration)
           ..smoothingMs = settings.smoothingMs
           ..deadZoneDegrees = settings.deadZoneDegrees;
         _processor = processor;
@@ -154,10 +170,8 @@ class MotionController with WidgetsBindingObserver {
                 if (!_isCurrent(generation)) return;
                 final before = processor.calibration.phase;
                 final now = _clock.elapsedMicroseconds;
-                if (before == CalibrationPhase.collecting &&
-                    processor.frameAt(now) == null) {
-                  processor.calibration.interrupt();
-                }
+                // Gaps are judged on sensor timestamps (Calibration.addFrame);
+                // UI jank delaying delivery must not reject a calibration.
                 final frame = processor.ingest(reading, now);
                 if (frame != null) {
                   gestures.update(
@@ -205,7 +219,8 @@ class MotionController with WidgetsBindingObserver {
     final processor = _processor;
     final time = _clock.elapsedMicroseconds;
     if (processor != null) {
-      if (processor.frameAt(time) == null) {
+      final age = processor.frameAgeUs(time);
+      if (age == null || age > renderStaleUs) {
         processor.calibration.interrupt();
         gestures.reset();
       }
@@ -223,7 +238,7 @@ class MotionController with WidgetsBindingObserver {
     _wifiClock.reset();
     bool? result;
     try {
-      result = await PlatformSensors.wifiConnected();
+      result = await device.wifiConnected();
     } on PlatformException {
       // The UI represents an unknown Wi-Fi state explicitly.
     } on MissingPluginException {
@@ -244,7 +259,12 @@ class MotionController with WidgetsBindingObserver {
   }
 
   void clearCalibration() {
-    _processor?.clearCalibration();
+    final processor = _processor;
+    if (processor != null) {
+      processor.clearCalibration();
+    } else {
+      _calibration.clear();
+    }
     gestures.reset();
     telemetry.value++;
   }
@@ -260,17 +280,18 @@ class MotionController with WidgetsBindingObserver {
 
   void updateSettings(ControllerSettings value) {
     final captureChanged = settings.captureHz != value.captureHz;
+    _settingsDirty = true;
     settings = value;
     _processor
       ?..smoothingMs = value.smoothingMs
       ..deadZoneDegrees = value.deadZoneDegrees;
-    if (captureChanged && _ready) _updateCapture();
+    if (captureChanged && _ready) _updateCapture(resetCalibration: true);
     status.value++;
   }
 
   Future<void> saveSettings() async {
     try {
-      await PlatformSensors.saveSettings(settings.toMap());
+      await device.saveSettings(settings.toMap());
     } on PlatformException catch (exception) {
       debugPrint('PULUPA! preferências: ${exception.code}');
     } on MissingPluginException {

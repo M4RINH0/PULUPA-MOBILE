@@ -8,11 +8,15 @@ MotionFrame frame(
   Vec3 acceleration = const Vec3(0, 0, 9.8),
   Vec3 gyro = Vec3.zero,
   Rotation rotation = Rotation.identity,
+  Vec3? linear,
+  double? peakLinear,
 }) => MotionFrame(
   timestampUs: timestamp,
   acceleration: acceleration,
   angularVelocity: gyro,
   orientation: rotation,
+  linearAcceleration: linear,
+  peakLinearAcceleration: peakLinear,
 );
 
 void main() {
@@ -76,4 +80,46 @@ void main() {
       expect(gestures.active, isEmpty);
     },
   );
+
+  for (final jerk in [2.5, 2.8, 3.0]) {
+    test('a sideways jerk of $jerk m/s² triggers abrupt motion', () {
+      final gestures = MotionGestures();
+      final sideways = Vec3(jerk, 0, 0);
+      // |a| barely departs from g, so a magnitude-only test would miss it.
+      final acceleration = const Vec3(0, 0, 9.80665) + sideways;
+      for (var t = 0; t <= 40000; t += 10000) {
+        gestures.update(
+          frame(t, acceleration: acceleration, linear: sideways),
+          calibrated: true,
+        );
+      }
+      expect(gestures.active, contains(GestureKind.abruptMotion));
+    });
+  }
+
+  test('gentle linear acceleration and gravity alone do not trigger', () {
+    final gestures = MotionGestures();
+    for (var t = 0; t <= 200000; t += 10000) {
+      gestures.update(
+        frame(
+          t,
+          acceleration: const Vec3(0, 6.9, 6.9),
+          linear: const Vec3(1.2, 0, 0),
+        ),
+        calibrated: true,
+      );
+    }
+    expect(gestures.active, isEmpty);
+  });
+
+  test('a short spike held between frames still triggers', () {
+    final gestures = MotionGestures();
+    for (var t = 0; t <= 40000; t += 10000) {
+      gestures.update(
+        frame(t, linear: Vec3.zero, peakLinear: 3.5),
+        calibrated: true,
+      );
+    }
+    expect(gestures.active, contains(GestureKind.abruptMotion));
+  });
 }

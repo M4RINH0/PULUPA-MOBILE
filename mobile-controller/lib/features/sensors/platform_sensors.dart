@@ -61,4 +61,7 @@ class PlatformSensors implements SensorSource {
 
   static Future<void> saveSettings(Map<String, Object> values) =>
       _device.invokeMethod<void>('saveSettings', values);
+
+  static Future<void> setKeepScreenOn(bool enabled) =>
+      _device.invokeMethod<void>('setKeepScreenOn', enabled);
 }

@@ -3,8 +3,11 @@ const put = (root, selector, value) => { root.querySelector(selector).textConten
 const cards = new Map();
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 const format = (value, unit) => value == null ? "—" : `${number.format(value)} ${unit}`.trim();
+const ERROR_SECONDS = 5;
+const FETCH_TIMEOUT_MS = 1500;
 let inviteKey = "";
-let actionError = "";
+let actionError = { text: "", at: 0 };
+let latestRequest = 0;
 
 function phoneMatrix(q) {
   // Convert game axes to the phone's physical axes and then to CSS Y-down.
@@ -21,14 +24,33 @@ function phoneMatrix(q) {
   ].join(",")})`;
 }
 
-async function action(path) {
+async function fetchWithTimeout(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(path, { method: "POST" });
-    if (!response.ok) throw new Error("action");
-    actionError = "";
-  } catch {
-    actionError = "Não foi possível completar a ação.";
+    return await fetch(path, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function action(path, { missingIsDone = false } = {}) {
+  try {
+    const response = await fetchWithTimeout(path, { method: "POST" });
+    // Desconectar um jogador que já saiu (404) tem o mesmo efeito esperado.
+    if (!response.ok && !(missingIsDone && response.status === 404)) throw new Error("action");
+    actionError = { text: "", at: 0 };
+  } catch {
+    actionError = { text: "Não foi possível completar a ação.", at: Date.now() };
+  }
+  refresh();
+}
+
+function currentActionError() {
+  if (actionError.text && Date.now() - actionError.at > ERROR_SECONDS * 1000) {
+    actionError = { text: "", at: 0 };
+  }
+  return actionError.text;
 }
 
 function renderPlayer(player) {
@@ -36,9 +58,12 @@ function renderPlayer(player) {
   if (!card) {
     card = byId("player-card").content.firstElementChild.cloneNode(true);
     card.querySelector(".haptic").addEventListener("click", () => action(`/api/players/${player.player}/haptic`));
-    card.querySelector(".disconnect").addEventListener("click", () => action(`/api/players/${player.player}/disconnect`));
+    card.querySelector(".disconnect").addEventListener("click", () => (
+      action(`/api/players/${player.player}/disconnect`, { missingIsDone: true })
+    ));
     cards.set(player.player, card);
   }
+  card.classList.remove("stale");
   card.style.setProperty("--player", player.color);
   put(card, "h3", `${player.player} · ${player.name}`);
   put(card, ".device", player.device);
@@ -80,17 +105,45 @@ function render(data) {
   for (const player of data.players) renderPlayer(player);
 }
 
-async function update() {
-  const error = byId("error");
-  try {
-    const response = await fetch("/api/state", { cache: "no-store" });
-    if (!response.ok) throw new Error("state");
-    render(await response.json());
-    error.textContent = actionError;
-  } catch {
-    error.textContent = "Servidor indisponível. Tentando novamente…";
+function renderUnavailable() {
+  // Sem resposta do servidor: nada exibido pode ser considerado atual.
+  const qr = byId("qr");
+  qr.hidden = true;
+  qr.removeAttribute("src");
+  inviteKey = "";
+  byId("code").textContent = "—";
+  byId("invite-status").textContent = "Sem conexão com o servidor.";
+  for (const card of cards.values()) {
+    card.classList.add("stale");
+    put(card, ".state", "Sem dados");
+    put(card, ".signal", "Sem dados");
+    card.querySelector(".phone").style.transform = "none";
+    card.querySelector(".haptic").disabled = true;
   }
-  error.hidden = !error.textContent;
+}
+
+async function refresh() {
+  const request = ++latestRequest;
+  const error = byId("error");
+  let text;
+  try {
+    const response = await fetchWithTimeout("/api/state", { cache: "no-store" });
+    if (!response.ok) throw new Error("state");
+    const data = await response.json();
+    if (request !== latestRequest) return;
+    render(data);
+    text = currentActionError();
+  } catch {
+    if (request !== latestRequest) return;
+    renderUnavailable();
+    text = "Servidor indisponível. Tentando novamente…";
+  }
+  error.textContent = text;
+  error.hidden = !text;
+}
+
+async function update() {
+  await refresh();
   setTimeout(update, 100);
 }
 

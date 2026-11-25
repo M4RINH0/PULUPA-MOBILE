@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pulupa_controller/core/motion_math.dart';
 import 'package:pulupa_controller/features/connection/motion_packet.dart';
 import 'package:pulupa_controller/features/connection/motion_transport.dart';
 import 'package:pulupa_controller/features/pairing/pairing_invite.dart';
+import 'package:pulupa_controller/features/pairing/player_name.dart';
 import 'package:pulupa_controller/features/sensors/sensor_source.dart';
 
 const session = 'dev_session_1234567890';
@@ -114,14 +116,155 @@ void main() {
     expect(() => packet(0), throwsFormatException);
   });
 
-  test('reconnection policy ends after five progressive delays', () {
+  test('reconnection backs off up to 5 s and stops at the drop window', () {
     const policy = ReconnectPolicy();
-    expect(policy.delayFor(-1), isNull);
+    expect(policy.delayFor(-1, Duration.zero), isNull);
     expect(
-      [for (var i = 0; i < 5; i++) policy.delayFor(i)!.inMilliseconds],
-      [500, 1000, 2000, 4000, 8000],
+      [
+        for (var i = 0; i < 7; i++)
+          policy.delayFor(i, Duration.zero)!.inMilliseconds,
+      ],
+      [500, 1000, 2000, 4000, 5000, 5000, 5000],
     );
-    expect(policy.delayFor(5), isNull);
+    expect(policy.delayFor(40, Duration.zero), const Duration(seconds: 5));
+    expect(
+      policy.delayFor(3, const Duration(seconds: 51)),
+      const Duration(seconds: 4),
+    );
+    expect(policy.delayFor(3, const Duration(seconds: 52)), isNull);
+    // Sum of the delays until the window closes: the client keeps trying for
+    // most of the server's 60 s reservation instead of five attempts.
+    var elapsed = Duration.zero;
+    var attempts = 0;
+    for (
+      var delay = policy.delayFor(0, elapsed);
+      delay != null;
+      delay = policy.delayFor(attempts, elapsed)
+    ) {
+      elapsed += delay;
+      attempts++;
+    }
+    expect(attempts, greaterThan(10));
+    expect(elapsed, lessThanOrEqualTo(const Duration(seconds: 55)));
+    expect(elapsed, greaterThan(const Duration(seconds: 50)));
+  });
+
+  test('invalid packets carry identity orientation and zero vectors', () {
+    final invalid = MotionPacket.invalid(
+      sessionId: session,
+      playerId: 2,
+      sequence: 3,
+      timestampUs: 7,
+      calibrated: false,
+    );
+    expect(jsonDecode(invalid.encode()), {
+      'v': 1,
+      'type': 'motion',
+      'session': session,
+      'player': 2,
+      'seq': 3,
+      't_us': 7,
+      'q': [0, 0, 0, 1],
+      'accel': [0, 0, 0],
+      'gyro': [0, 0, 0],
+      'calibrated': false,
+      'valid': false,
+    });
+    expect(MotionPacket.decode(invalid.encode()).valid, isFalse);
+  });
+
+  test('player names follow the shared rule', () {
+    expect(normalizePlayerName('  Ana\u00A0Bia\u3000'), 'Ana Bia');
+    expect(normalizePlayerName('Ana\u200DBia'), 'Ana\u200DBia');
+    expect(normalizePlayerName('\u{1F469}\u200D\u{1F4BB}'), isNotNull);
+    expect(normalizePlayerName('A' * 32), 'A' * 32);
+    for (final name in [
+      '',
+      '\u2003',
+      'A' * 33,
+      'Ana\nBia',
+      'Ana\u0085',
+      'Ana\u2028',
+      'Ana\u202E',
+      'Ana\u2067',
+      'Ana\uE000',
+      'Ana\u{F0000}',
+      'Ana\u{10FFFD}',
+      'Ana\uD800',
+    ]) {
+      expect(normalizePlayerName(name), isNull, reason: name);
+    }
+  });
+
+  group('shared protocol fixtures', () {
+    // Run from mobile-controller/, as `flutter test` does.
+    final motionFile = File('../protocol/fixtures/motion.json');
+    final namesFile = File('../protocol/fixtures/names.json');
+
+    test('motion encoder and validator agree with the server', () {
+      final fixture =
+          jsonDecode(motionFile.readAsStringSync()) as Map<String, dynamic>;
+      final fixtureSession = fixture['session'] as String;
+      final fixturePlayer = fixture['player'] as int;
+      final valid = fixture['valid'] as List;
+      expect(valid, isNotEmpty);
+      for (final raw in valid.cast<Map<String, dynamic>>()) {
+        List<double> numbers(String key) => [
+          for (final n in raw[key] as List) (n as num).toDouble(),
+        ];
+        final q = numbers('q');
+        final a = numbers('accel');
+        final g = numbers('gyro');
+        final built = MotionPacket.fromFields(
+          sessionId: raw['session'] as String,
+          playerId: raw['player'] as int,
+          sequence: raw['seq'] as int,
+          timestampUs: raw['t_us'] as int,
+          orientation: Rotation(q[0], q[1], q[2], q[3]),
+          acceleration: Vec3(a[0], a[1], a[2]),
+          angularVelocity: Vec3(g[0], g[1], g[2]),
+          calibrated: raw['calibrated'] as bool,
+          valid: raw['valid'] as bool,
+        );
+        // Numbers compare by value, so 1 and 1.0 are equal here.
+        expect(jsonDecode(built.encode()), raw, reason: '${raw['seq']}');
+        final decoded = MotionPacket.decode(jsonEncode(raw));
+        expect(decoded.sessionId, fixtureSession);
+        expect(decoded.playerId, fixturePlayer);
+      }
+      final invalid = fixture['invalid'] as List;
+      expect(invalid, isNotEmpty);
+      for (final entry in invalid.cast<Map<String, dynamic>>()) {
+        final reason = entry['reason'] as String;
+        final text = jsonEncode(entry['packet']);
+        // Session and player mismatches depend on the authenticated
+        // connection, which the client checks as context, not syntax.
+        bool rejected;
+        try {
+          final packet = MotionPacket.decode(text);
+          rejected =
+              packet.sessionId != fixtureSession ||
+              packet.playerId != fixturePlayer;
+        } on FormatException {
+          rejected = true;
+        }
+        expect(rejected, isTrue, reason: reason);
+      }
+    });
+
+    test('name rule agrees with the server', () {
+      final fixture =
+          jsonDecode(namesFile.readAsStringSync()) as Map<String, dynamic>;
+      for (final name in (fixture['valid'] as List).cast<String>()) {
+        expect(normalizePlayerName(name), name, reason: name);
+      }
+      for (final pair in (fixture['normalized'] as List).cast<List<dynamic>>()) {
+        expect(normalizePlayerName(pair[0] as String), pair[1], reason: '$pair');
+      }
+      for (final name in (fixture['invalid'] as List).cast<String>()) {
+        expect(normalizePlayerName(name), isNull, reason: name);
+      }
+    });
   });
 }
 

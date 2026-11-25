@@ -2,7 +2,7 @@
 
 Aplicativo Android que transforma o celular em um controle de movimento para **PULUPA! — Motion Party Games**.
 
-O app combina captura IMU nativa, calibração de posição neutra, gestos experimentais e um laboratório de sensores. O servidor Windows recebe por WebSocket até quatro controles na rede local, mostra a orientação e as métricas de cada jogador e fornece uma interface para Godot 4.
+O app combina captura IMU nativa, calibração de posição neutra, gestos experimentais e um laboratório de sensores. O servidor Windows recebe por WebSocket até quatro controles na rede local, mostra a orientação e as métricas de cada jogador e fornece uma interface local para jogos em Unity 6.
 
 ## Iniciar o servidor no Windows
 
@@ -20,6 +20,8 @@ Abra [o painel no computador](http://127.0.0.1:8765). Se o PC tiver múltiplas i
 ## Executar no Android
 
 Com Flutter estável e Android SDK configurados no Windows, conecte um Android com depuração USB.
+
+> Clone o repositório numa pasta sem `!` no caminho (por exemplo `git clone <url> C:\src\pulupa`); com `!`, o Gradle falha ao compilar. Veja a [configuração no Windows](docs/setup-windows.md).
 
 ```powershell
 cd mobile-controller
@@ -57,4 +59,4 @@ Para ver dados de quatro controles sem celulares, deixe o servidor aberto e rode
 - [Calibração e convenções de eixos](docs/calibration.md)
 - [Roteiro de testes](docs/testing.md)
 - [Protocolo de movimento e pareamento](protocol/motion-protocol.md)
-- [Integração com Godot 4](docs/godot.md)
+- [Integração com Unity 6](docs/unity.md)

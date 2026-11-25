@@ -7,12 +7,31 @@ from .main import create_app
 from .protocol import is_lan
 
 
-def choose_lan_ip() -> str | None:
+def default_route_ip() -> str | None:
+    # connect() em UDP só escolhe a rota padrão; nenhum pacote é enviado.
     try:
-        candidates = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
-    except socket.gaierror:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("8.8.8.8", 80))
+            return probe.getsockname()[0]
+    except OSError:
         return None
-    return next((address[0] for *_, address in candidates if is_lan(address[0])), None)
+
+
+def lan_candidates() -> list[str]:
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+    except socket.gaierror:
+        return []
+    return list(dict.fromkeys(address[0] for *_, address in infos if is_lan(address[0])))
+
+
+def choose_lan_ip() -> tuple[str | None, list[str]]:
+    """Prefere o IPv4 da rota padrão; adaptadores virtuais costumam aparecer antes no Windows."""
+    preferred = default_route_ip()
+    candidates = lan_candidates()
+    if preferred and is_lan(preferred):
+        candidates = [preferred, *(ip for ip in candidates if ip != preferred)]
+    return (candidates[0] if candidates else None), candidates
 
 
 def main():
@@ -23,7 +42,14 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("a porta deve estar entre 1 e 65535")
-    lan_ip = args.lan_ip or ("127.0.0.1" if args.local_only else choose_lan_ip())
+    lan_ip = args.lan_ip
+    if not lan_ip and args.local_only:
+        lan_ip = "127.0.0.1"
+    elif not lan_ip:
+        lan_ip, candidates = choose_lan_ip()
+        if len(candidates) > 1:
+            print("Vários IPv4 locais encontrados: " + ", ".join(candidates), flush=True)
+            print(f"Usando {lan_ip}. Para escolher outro, execute com --lan-ip <IPv4>.", flush=True)
     if not args.local_only and (not lan_ip or not is_lan(lan_ip)):
         parser.error("informe o IPv4 local com --lan-ip ou execute com --local-only")
     lan_ip = lan_ip or "127.0.0.1"

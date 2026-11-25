@@ -75,6 +75,15 @@ class ConnectedPage extends StatelessWidget {
               alert: true,
             ),
           ),
+        if (connected && connection.sensorDataMissing)
+          const Panel(
+            child: StatusLine(
+              icon: Icons.sensors_off_rounded,
+              label: 'Sem dados dos sensores',
+              detail: 'O PC está ignorando o movimento até os sensores voltarem.',
+              alert: true,
+            ),
+          ),
         ValueListenableBuilder(
           valueListenable: motion.telemetry,
           builder: (context, _, _) {

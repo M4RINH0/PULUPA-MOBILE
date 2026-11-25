@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Política de rede do PULUPA Controller.
+
+  O celular conversa com o motion-server via ws:// em um IP arbitrário da rede local
+  (lido do QR code de pareamento), por isso o tráfego sem TLS precisa continuar
+  permitido; não dá para listar domínios porque o destino é um IP privado qualquer.
+
+  Modelo de ameaça: a rede local (Wi-Fi da casa/sala ou hotspot do próprio celular) é
+  considerada confiável: quem estiver na mesma rede consegue ler o tráfego, que contém
+  apenas o token de pareamento da sessão e a orientação/gestos do controle. Não use o
+  PULUPA em redes Wi-Fi públicas ou não confiáveis.
+
+  O app não acessa nenhum serviço da internet; se algum dia acessar, adicione um
+  <domain-config cleartextTrafficPermitted="false"> para esses domínios.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

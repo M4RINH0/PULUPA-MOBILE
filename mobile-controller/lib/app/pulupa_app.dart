@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/theme/pulupa_theme.dart';
@@ -9,6 +10,7 @@ import '../features/connection/connection_controller.dart';
 import '../features/diagnostics/lab_page.dart';
 import '../features/home/home_page.dart';
 import '../features/pairing/pairing_page.dart';
+import '../features/sensors/platform_sensors.dart';
 import '../features/sensors/sensor_source.dart';
 import 'motion_controller.dart';
 import 'settings_page.dart';
@@ -42,6 +44,7 @@ class _ControllerShellState extends State<_ControllerShell> {
   late final MotionController _controller;
   late final ConnectionController _connection;
   int _page = 0;
+  bool? _keepScreenOn;
 
   @override
   void initState() {
@@ -53,7 +56,30 @@ class _ControllerShellState extends State<_ControllerShell> {
       onFeedback: _controller.feedback,
     );
     _controller.status.addListener(_applySendRate);
+    _connection.addListener(_applyKeepScreenOn);
     unawaited(_controller.initialize());
+  }
+
+  /// Keeps the display awake while a game connection is live or recovering,
+  /// so the OS does not suspend sensors and sockets mid-game.
+  void _applyKeepScreenOn() {
+    final enabled =
+        _connection.phase == ConnectionPhase.connected ||
+        (_connection.phase == ConnectionPhase.retrying &&
+            _connection.player != null);
+    if (_keepScreenOn == enabled) return;
+    _keepScreenOn = enabled;
+    unawaited(_setKeepScreenOn(enabled));
+  }
+
+  static Future<void> _setKeepScreenOn(bool enabled) async {
+    try {
+      await PlatformSensors.setKeepScreenOn(enabled);
+    } on MissingPluginException {
+      // Tests and platforms without the native channel.
+    } on PlatformException {
+      // Keeping the screen on is a convenience; never break the session.
+    }
   }
 
   void _applySendRate() =>
@@ -62,6 +88,8 @@ class _ControllerShellState extends State<_ControllerShell> {
   @override
   void dispose() {
     _controller.status.removeListener(_applySendRate);
+    _connection.removeListener(_applyKeepScreenOn);
+    if (_keepScreenOn == true) unawaited(_setKeepScreenOn(false));
     _connection.dispose();
     _controller.dispose();
     super.dispose();
@@ -81,7 +109,10 @@ class _ControllerShellState extends State<_ControllerShell> {
     if (!mounted) return;
     if (paired == true) {
       _select(0);
-    } else {
+    } else if (_connection.player == null) {
+      // Leaving the pairing page cancels a pairing still in progress, but
+      // never a connection that already succeeded (the page may be popped
+      // by the back button just as the welcome arrives).
       _connection.disconnect();
     }
   }

@@ -7,6 +7,7 @@ import '../../core/theme/components.dart';
 import '../../core/theme/pulupa_theme.dart';
 import '../connection/connection_controller.dart';
 import 'pairing_invite.dart';
+import 'player_name.dart';
 
 class PairingPage extends StatefulWidget {
   const PairingPage({
@@ -49,12 +50,11 @@ class _PairingPageState extends State<PairingPage> {
   }
 
   String? _playerName() {
-    final name = _name.text.trim();
-    if (name.isEmpty ||
-        name.runes.length > 32 ||
-        name.runes.any((c) => c < 32 || c == 127)) {
+    final name = normalizePlayerName(_name.text);
+    if (name == null) {
       setState(
-        () => _formError = 'Informe um nome de jogador com até 32 caracteres.',
+        () => _formError =
+            'Informe um nome de jogador com 1 a 32 caracteres visíveis.',
       );
       return null;
     }

@@ -65,6 +65,62 @@ class MotionPacket {
     );
   }
 
+  /// Placeholder sent while no usable sensor frame exists. The protocol asks
+  /// for identity orientation (`q` is `[x, y, z, w]`) and zero vectors so
+  /// consumers can ignore it safely.
+  factory MotionPacket.invalid({
+    required String sessionId,
+    required int playerId,
+    required int sequence,
+    required int timestampUs,
+    required bool calibrated,
+  }) {
+    _validateHeader(sessionId, playerId, sequence, timestampUs);
+    return MotionPacket._(
+      sessionId: sessionId,
+      playerId: playerId,
+      sequence: sequence,
+      frame: MotionFrame(
+        timestampUs: timestampUs,
+        orientation: Rotation.identity,
+        acceleration: Vec3.zero,
+        angularVelocity: Vec3.zero,
+      ),
+      calibrated: calibrated,
+      valid: false,
+    );
+  }
+
+  /// Builds a packet from values already in game axes, applying the same
+  /// checks as [MotionPacket.decode]. The orientation is kept as given.
+  factory MotionPacket.fromFields({
+    required String sessionId,
+    required int playerId,
+    required int sequence,
+    required int timestampUs,
+    required Rotation orientation,
+    required Vec3 acceleration,
+    required Vec3 angularVelocity,
+    required bool calibrated,
+    required bool valid,
+  }) {
+    _validateHeader(sessionId, playerId, sequence, timestampUs);
+    _validateReadings(orientation, acceleration, angularVelocity);
+    return MotionPacket._(
+      sessionId: sessionId,
+      playerId: playerId,
+      sequence: sequence,
+      frame: MotionFrame(
+        timestampUs: timestampUs,
+        orientation: orientation,
+        acceleration: acceleration,
+        angularVelocity: angularVelocity,
+      ),
+      calibrated: calibrated,
+      valid: valid,
+    );
+  }
+
   static void _validateHeader(
     String sessionId,
     int playerId,

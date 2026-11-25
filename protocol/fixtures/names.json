@@ -1,0 +1,76 @@
+{
+  "valid": [
+    "Ana",
+    "x",
+    "Jos\u00e9",
+    "\u674e\u5c0f\u9f99",
+    "Jogador 1",
+    "Ana \ud83d\udc69\u200d\ud83d\udcbb",
+    "\ud83d\udc69\u200d\ud83d\udcbb",
+    "\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f",
+    "Ana\u200dBia",
+    "Ana\u200eBia",
+    "Ana  Bia",
+    "Ana\u0378",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAA\ud83d\udc69\u200d\ud83d\udcbb"
+  ],
+  "normalized": [
+    [
+      " Ana ",
+      "Ana"
+    ],
+    [
+      "Ana\u00a0Bia",
+      "Ana Bia"
+    ],
+    [
+      "\u3000Ana\u2003",
+      "Ana"
+    ],
+    [
+      "Ana\u202fBia",
+      "Ana Bia"
+    ],
+    [
+      "\u00a0\u00a0Ana\u00a0\u00a0Bia\u00a0",
+      "Ana  Bia"
+    ],
+    [
+      "  Ana  Bia  ",
+      "Ana  Bia"
+    ],
+    [
+      " AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ",
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    ],
+    [
+      "Ana \ud83d\udc69\u200d\ud83d\udcbb\u00a0",
+      "Ana \ud83d\udc69\u200d\ud83d\udcbb"
+    ]
+  ],
+  "invalid": [
+    "",
+    " ",
+    "\u00a0",
+    "\u3000\u2003",
+    "Ana\u202e",
+    "\u202aAna",
+    "Ana\u202c",
+    "\u2066Ana",
+    "Ana\u2069",
+    "Ana\tBia",
+    "\tAna",
+    "Ana\n",
+    "Ana\u0000",
+    "Ana\u007f",
+    "Ana\u0085",
+    "Ana\u2028Bia",
+    "Ana\u2029",
+    "Ana\ue000",
+    "Ana\udb80\udc00",
+    "Ana\ud800",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\ud83d\udc69\u200d\ud83d\udcbb"
+  ]
+}

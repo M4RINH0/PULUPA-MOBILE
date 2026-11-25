@@ -1,16 +1,23 @@
+import 'dart:math' as math;
+
 import '../../core/motion_math.dart';
 import '../calibration/calibration.dart';
 import 'gravity_fusion.dart';
 import 'sensor_source.dart';
 
 class MotionProcessor {
-  MotionProcessor(this.capabilities);
+  /// [calibration] may be shared across processors so the neutral pose
+  /// survives a capture restart (for example after the app is paused).
+  MotionProcessor(this.capabilities, {Calibration? calibration})
+    : calibration = calibration ?? Calibration();
 
   static const maxSensorSkewUs = 120000;
   static const staleAfterUs = 350000;
+  static const sourceChangedFeedback =
+      'A fonte de orientação mudou; recalibre.';
 
   final SensorCapabilities capabilities;
-  final calibration = Calibration();
+  final Calibration calibration;
   final _fusion = GravityFusion();
   final _filter = OrientationFilter();
   final _rates = {for (final kind in SensorKind.values) kind: _Rate()};
@@ -27,6 +34,9 @@ class MotionProcessor {
   int _lastSystemUs = -1;
   int _lastFrameUs = -1;
   bool _usingSystem = false;
+  bool _checkedReferenceSource = false;
+  double _peakLinear = 0;
+  double _peakGyro = 0;
 
   int smoothingMs = 18;
   double deadZoneDegrees = 0.5;
@@ -62,6 +72,12 @@ class MotionProcessor {
     return _latestFrame;
   }
 
+  /// Wall-clock age of the latest complete frame, or null if there is none.
+  int? frameAgeUs(int nowUs) {
+    final receiptUs = _frameReceiptUs;
+    return receiptUs == null ? null : nowUs - receiptUs;
+  }
+
   void clearCalibration() {
     calibration.clear();
     _filter.reset();
@@ -89,9 +105,11 @@ class MotionProcessor {
     calibration.observeReading(reading);
     if (kind == SensorKind.acceleration) {
       _acceleration = reading.vector;
+      _peakLinear = math.max(_peakLinear, _linearMagnitude(reading.vector!));
       return null;
     }
     _angularVelocity = reading.vector;
+    _peakGyro = math.max(_peakGyro, reading.vector!.length);
     final firstGyroUs = _firstGyroUs ??= timestamp;
     final awaitingSystem =
         capabilities.systemOrientation &&
@@ -110,7 +128,26 @@ class MotionProcessor {
       _near(SensorKind.acceleration, timestamp) ? _acceleration : null,
     );
     if (orientation == null) return null;
+    if (_fusion.interrupted) {
+      // The rotation during the gap is unknown: no sample from it may enter
+      // a calibration window or be blended by the smoothing filter.
+      calibration.interrupt();
+      _filter.reset();
+    }
     return _orient(orientation, timestamp, receivedUs, system: false);
+  }
+
+  Vec3? _gravity() {
+    final raw = _rawOrientation;
+    if (raw == null) return null;
+    return raw.inverseUnit.rotate(Vec3.up) * standardGravity;
+  }
+
+  double _linearMagnitude(Vec3 acceleration) {
+    final gravity = _gravity();
+    return gravity == null
+        ? (acceleration.length - standardGravity).abs()
+        : (acceleration - gravity).length;
   }
 
   bool _near(SensorKind kind, int timestamp) {
@@ -136,10 +173,23 @@ class MotionProcessor {
         !(switched && system && previousUs - timestamp <= maxSensorSkewUs)) {
       return null;
     }
+    final source = system
+        ? OrientationSource.systemFusion
+        : OrientationSource.gyroscopeGravity;
+    final staleReference =
+        !_checkedReferenceSource &&
+        calibration.reference != null &&
+        calibration.referenceSource != null &&
+        calibration.referenceSource != source;
+    _checkedReferenceSource = true;
+    if (staleReference) {
+      calibration.clear(reason: sourceChangedFeedback);
+      _filter.reset();
+    }
     if (switched) {
-      calibration.interrupt();
+      calibration.interrupt(sourceChangedFeedback);
       if (calibration.reference != null) {
-        calibration.clear();
+        calibration.clear(reason: sourceChangedFeedback);
       }
       _filter.reset();
       _rates[SensorKind.orientation] = _Rate();
@@ -166,14 +216,17 @@ class MotionProcessor {
           angularVelocity: _angularVelocity!,
         ),
       );
-      if (calibration.reference != oldReference) _filter.reset();
+      if (calibration.reference != oldReference) {
+        calibration.referenceSource = source;
+        _filter.reset();
+      }
     }
 
     final reference = calibration.reference;
     _orientation = reference == null
         ? raw
         : _filter.update(
-            (reference.inverseUnit * raw).normalized(),
+            gravityAlignedRelative(reference, raw),
             timestamp,
             smoothingMs: smoothingMs,
             deadZoneDegrees: deadZoneDegrees,
@@ -181,12 +234,21 @@ class MotionProcessor {
     if (!synchronized || timestamp <= _lastFrameUs) return null;
     _lastFrameUs = timestamp;
     _frameReceiptUs = receivedUs;
-    return _latestFrame = MotionFrame(
+    final acceleration = _acceleration!;
+    final angularVelocity = _angularVelocity!;
+    final linear = acceleration - _gravity()!;
+    final frame = _latestFrame = MotionFrame(
       timestampUs: timestamp,
       orientation: _orientation!,
-      acceleration: _acceleration!,
-      angularVelocity: _angularVelocity!,
+      acceleration: acceleration,
+      angularVelocity: angularVelocity,
+      linearAcceleration: linear,
+      peakLinearAcceleration: math.max(_peakLinear, linear.length),
+      peakAngularVelocity: math.max(_peakGyro, angularVelocity.length),
     );
+    _peakLinear = 0;
+    _peakGyro = 0;
+    return frame;
   }
 }
 

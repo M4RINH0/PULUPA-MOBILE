@@ -57,10 +57,24 @@ class MotionFrame {
     required this.orientation,
     required this.acceleration,
     required this.angularVelocity,
+    this.linearAcceleration,
+    this.peakLinearAcceleration,
+    this.peakAngularVelocity,
   });
 
   final int timestampUs;
   final Rotation orientation;
   final Vec3 acceleration;
   final Vec3 angularVelocity;
+
+  /// Specific force minus the gravity estimated from the raw (uncalibrated)
+  /// orientation, in device axes. Null when no estimate exists.
+  final Vec3? linearAcceleration;
+
+  /// Largest |linear acceleration| observed since the previous frame,
+  /// including readings that arrived between orientation samples.
+  final double? peakLinearAcceleration;
+
+  /// Largest |angular velocity| observed since the previous frame.
+  final double? peakAngularVelocity;
 }

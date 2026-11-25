@@ -74,6 +74,8 @@ dd { font-weight: 750; margin: 0; font-variant-numeric: tabular-nums; }
 .metrics div { display: block; padding: .35rem .48rem; border-radius: 8px; background: var(--paper); }
 .actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .8rem; }
 .disconnect { color: #a61936; }
+.player.stale { opacity: .55; }
+.player.stale .state { background: #f1e3e6; color: #a61936; }
 @media (max-width: 670px) {
   main { grid-template-columns: 1fr; }
 }

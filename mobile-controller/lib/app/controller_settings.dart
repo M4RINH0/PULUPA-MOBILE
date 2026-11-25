@@ -23,8 +23,11 @@ class ControllerSettings {
     final deadZone = values['deadZoneDegrees'];
     final haptics = values['haptics'];
     return ControllerSettings(
-      captureHz: captureRates.contains(capture) ? capture as int : 100,
-      sendHz: sendRates.contains(send) ? send as int : 60,
+      // `60 == 60.0` in Dart, so check the type before the cast.
+      captureHz: capture is int && captureRates.contains(capture)
+          ? capture
+          : 100,
+      sendHz: send is int && sendRates.contains(send) ? send : 60,
       smoothingMs: smoothing is int ? smoothing.clamp(0, 60) : 18,
       deadZoneDegrees: deadZone is num && deadZone.isFinite
           ? deadZone.toDouble().clamp(0.0, 3.0)

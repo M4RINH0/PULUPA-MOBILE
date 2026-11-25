@@ -113,10 +113,39 @@ class Rotation {
   }
 }
 
-// Active change of basis to X right, Y up, -Z forward (Godot convention).
+// Active change of basis to the wire game axes: right-handed, X right, Y up,
+// -Z forward. Unity (left-handed, +Z forward) converts on its side; see
+// protocol/unity/README.md.
 final deviceWorldToGame = Rotation.axisAngle(const Vec3(1, 0, 0), -math.pi / 2);
 
 Vec3 vectorInGameAxes(Vec3 value) => Vec3(value.x, value.z, -value.y);
 
 Rotation rotationInGameAxes(Rotation value) =>
     (deviceWorldToGame * value * deviceWorldToGame.inverseUnit).normalized();
+
+// Heading of a device-to-world pose: the yaw about world up (+Z) that takes
+// world +Y to the horizontal direction the player faces. That direction is
+// the device top when the phone lies flat and the back of the phone when it
+// stands upright, so (top - screen normal) projected on the floor covers both.
+Rotation headingOf(Rotation pose) {
+  final top = pose.rotate(const Vec3(0, 1, 0));
+  final screen = pose.rotate(Vec3.up);
+  var forward = Vec3(top.x - screen.x, top.y - screen.y, 0);
+  if (forward.length < 0.2) {
+    final right = pose.rotate(const Vec3(1, 0, 0));
+    forward = Vec3.up.cross(Vec3(right.x, right.y, 0));
+  }
+  if (forward.length < 1e-9) return Rotation.identity;
+  return Rotation.between(const Vec3(0, 1, 0), forward);
+}
+
+// Rotation from the neutral pose to the current pose, expressed in a
+// gravity-aligned frame that follows the neutral heading: +Z stays world up
+// and +Y is the facing direction. Equals identity at the neutral pose for any
+// holding posture. For a flat, screen-up neutral pose this reduces to
+// inverse(reference) * current.
+Rotation gravityAlignedRelative(Rotation reference, Rotation current) {
+  final heading = headingOf(reference);
+  return (heading.inverseUnit * current * reference.inverseUnit * heading)
+      .normalized();
+}

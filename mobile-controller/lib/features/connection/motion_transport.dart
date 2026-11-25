@@ -1,23 +1,35 @@
 import 'motion_packet.dart';
 
-/// Implementations replace any pending sample with the newest on offer.
+/// Keeps at most one motion packet awaiting acknowledgement. Callers pick the
+/// newest sample only when [offer] can send it, so nothing stale is queued.
 abstract interface class MotionTransport {
-  void offer(MotionPacket packet);
+  /// Sends [packet] and returns true, or returns false while another packet
+  /// still awaits its `motion_ack`.
+  bool offer(MotionPacket packet);
   Future<void> close();
 }
 
+/// Backoff for reconnecting after a dropped connection. Retries continue,
+/// with delays capped at [maxDelay], until [window] has elapsed since the
+/// drop. The server keeps a dropped slot for 60 s, so the default window ends
+/// a little earlier to leave room for the last handshake.
 class ReconnectPolicy {
-  const ReconnectPolicy();
+  const ReconnectPolicy({
+    this.window = const Duration(seconds: 55),
+    this.maxDelay = const Duration(seconds: 5),
+  });
 
-  static const _delays = [
-    Duration(milliseconds: 500),
-    Duration(seconds: 1),
-    Duration(seconds: 2),
-    Duration(seconds: 4),
-    Duration(seconds: 8),
-  ];
+  static const _initial = Duration(milliseconds: 500);
 
-  /// Zero represents the first retry, after the original connection attempt.
-  Duration? delayFor(int attempt) =>
-      attempt >= 0 && attempt < _delays.length ? _delays[attempt] : null;
+  final Duration window;
+  final Duration maxDelay;
+
+  /// Delay before retry number [attempt] (zero is the first retry), or null
+  /// when that retry would start after [window] measured from the drop.
+  Duration? delayFor(int attempt, Duration sinceDrop) {
+    if (attempt < 0) return null;
+    final grown = _initial * (1 << (attempt > 10 ? 10 : attempt));
+    final delay = grown > maxDelay ? maxDelay : grown;
+    return sinceDrop + delay > window ? null : delay;
+  }
 }

@@ -7,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
-from .protocol import ProtocolError, TOKEN, envelope, label, validate_motion
+from .protocol import ATTEMPT, ProtocolError, TOKEN, device_label, envelope, player_name, validate_motion
 
 COLORS = ("#345CFF", "#FF55A5", "#FFD928", "#8B5CF6")
 SESSION_SECONDS = 7200
@@ -15,6 +15,8 @@ INVITE_SECONDS = 120
 RESUME_SECONDS = 60
 FRAME_SECONDS = 0.35
 MANUAL_CODE = re.compile(r"[0-9]{6}")
+HOST_FAILURES = 8
+INVITE_FAILURES = 20
 
 
 def token_matches(value, expected: str, pattern) -> bool:
@@ -45,6 +47,10 @@ class Player:
     socket: object
     key: str = field(default_factory=lambda: secrets.token_urlsafe(12))
     resume: str = field(default_factory=lambda: secrets.token_urlsafe(32))
+    previous_resume: str | None = None
+    attempt: str | None = None
+    welcomed: bool = False
+    replaced: object | None = None
     connected: bool = True
     disconnected_at: float = 0
     calibrated: bool = False
@@ -64,6 +70,29 @@ class Player:
     def welcome(self, session_id: str) -> dict:
         return envelope("welcome", session=session_id, player=self.id, name=self.name,
                         color=self.color, player_key=self.key, resume=self.resume)
+
+    def resume_matches(self, value) -> bool:
+        current = token_matches(value, self.resume, TOKEN)
+        previous = self.previous_resume is not None and token_matches(value, self.previous_resume, TOKEN)
+        return current or previous
+
+    def take_over(self, socket: object, presented: str | None = None):
+        """Associa o jogador a um novo socket e renova o token de reconexão.
+
+        O token apresentado (ou o atual) continua aceito até o servidor receber
+        uma mensagem válida no novo socket, o que prova a entrega do welcome.
+        """
+        if self.connected and self.socket is not socket:
+            self.replaced = self.socket
+        self.connected = True
+        self.socket = socket
+        self.previous_resume = presented if presented is not None else self.resume
+        self.resume = secrets.token_urlsafe(32)
+        self.arrivals.clear()
+        self.rtts.clear()
+
+    def confirm(self):
+        self.previous_resume = None
 
     def accept(self, packet: dict, session_id: str, now: float) -> bool:
         motion = validate_motion(packet, session_id, self.id)
@@ -116,6 +145,7 @@ class Session:
         self.expires = clock() + SESSION_SECONDS
         self.players: dict[int, Player] = {}
         self._failures: dict[str, deque] = {}
+        self.invite_failures = 0
         self._rotate_invite(clock())
 
     @property
@@ -126,6 +156,7 @@ class Session:
         self.ticket = secrets.token_urlsafe(32)
         self.code = f"{secrets.randbelow(1_000_000):06d}"
         self.invite_expires = now + INVITE_SECONDS
+        self.invite_failures = 0
 
     def invite(self) -> dict:
         now = self.clock()
@@ -153,6 +184,12 @@ class Session:
             if not failures:
                 del self._failures[host]
 
+    def _fail(self, host: str, now: float):
+        self._failures.setdefault(host, deque()).append(now)
+        self.invite_failures += 1
+        if self.invite_failures >= INVITE_FAILURES:
+            self._rotate_invite(now)
+
     def join(self, hello: dict, host: str, socket: object) -> Player:
         now = self.clock()
         if self.expired:
@@ -160,24 +197,23 @@ class Session:
         if now >= self.invite_expires:
             self._rotate_invite(now)
         self.prune(now)
-        if len(self._failures.get(host, ())) >= 8:
+        if len(self._failures.get(host, ())) >= HOST_FAILURES:
             raise ProtocolError("retry_later")
-
-        name = label(hello.get("name"), 32)
-        expected_session = hello.get("session") == self.id
-        fields = hello.keys() - {"v", "type", "name", "device"}
-        if hello.get("type") != "hello" or not name:
+        if hello.get("type") != "hello":
             raise ProtocolError("invalid_message")
+        name = player_name(hello.get("name"))
+        if name is None:
+            raise ProtocolError("invalid_name")
+        attempt = hello.get("attempt")
+        if "attempt" in hello and (type(attempt) is not str or ATTEMPT.fullmatch(attempt) is None):
+            raise ProtocolError("invalid_message")
+
+        expected_session = hello.get("session") == self.id
+        fields = hello.keys() - {"v", "type", "name", "device", "attempt"}
         if fields == {"session", "resume"} and expected_session:
             for player in self.players.values():
-                if token_matches(hello["resume"], player.resume, TOKEN):
-                    if player.connected:
-                        raise ProtocolError("resume_pending")
-                    player.connected = True
-                    player.socket = socket
-                    player.resume = secrets.token_urlsafe(32)
-                    player.arrivals.clear()
-                    player.rtts.clear()
+                if player.resume_matches(hello["resume"]):
+                    player.take_over(socket, hello["resume"])
                     return player
         valid_invite = (
             fields == {"session", "ticket"} and expected_session
@@ -185,12 +221,17 @@ class Session:
         )
         valid_code = fields == {"code"} and token_matches(hello["code"], self.code, MANUAL_CODE)
         if not (valid_invite or valid_code):
-            self._failures.setdefault(host, deque()).append(now)
+            self._fail(host, now)
             raise ProtocolError("invalid_invite")
+        if attempt is not None:
+            for player in self.players.values():
+                if player.attempt is not None and secrets.compare_digest(player.attempt, attempt):
+                    player.take_over(socket)
+                    return player
         player_id = next((slot for slot in range(1, 5) if slot not in self.players), None)
         if player_id is None:
             raise ProtocolError("session_full")
-        player = Player(player_id, name, label(hello.get("device"), 64, "Dispositivo móvel"), socket)
+        player = Player(player_id, name, device_label(hello.get("device")), socket, attempt=attempt)
         self.players[player_id] = player
         return player
 

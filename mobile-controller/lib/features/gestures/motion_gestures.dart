@@ -88,6 +88,15 @@ class ThresholdGestureDetector implements MotionGestureDetector {
   }
 }
 
+/// Magnitude of the acceleration not explained by gravity, in m/s². Uses
+/// the peak held since the previous frame when the processor supplies it, so
+/// short jerks between orientation samples are not missed. Frames without a
+/// gravity estimate fall back to the deviation of |a| from g.
+double linearAccelerationOf(MotionFrame frame) =>
+    frame.peakLinearAcceleration ??
+    frame.linearAcceleration?.length ??
+    (frame.acceleration.length - standardGravity).abs();
+
 class MotionGestures {
   MotionGestures({List<MotionGestureDetector>? detectors})
     : _detectors =
@@ -95,17 +104,18 @@ class MotionGestures {
           [
             ThresholdGestureDetector(
               GestureKind.abruptMotion,
-              (frame, _) => (frame.acceleration.length - standardGravity).abs(),
+              (frame, _) => linearAccelerationOf(frame),
               const GestureThreshold(
-                on: 2.5,
-                off: 1.1,
+                on: 2.2,
+                off: 1.0,
                 startHoldMs: 10,
                 smoothingMs: 12,
               ),
             ),
             ThresholdGestureDetector(
               GestureKind.quickRotation,
-              (frame, _) => frame.angularVelocity.length,
+              (frame, _) =>
+                  frame.peakAngularVelocity ?? frame.angularVelocity.length,
               const GestureThreshold(on: 4, off: 2),
             ),
             ThresholdGestureDetector(

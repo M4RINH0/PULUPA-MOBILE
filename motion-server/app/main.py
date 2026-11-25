@@ -1,6 +1,7 @@
 import asyncio
 import io
 import ipaddress
+import time
 from pathlib import Path
 
 import qrcode
@@ -15,6 +16,11 @@ STATIC = Path(__file__).with_name("static")
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 PING_INTERVAL = 2
 PEER_TIMEOUT = 8
+HELLO_TIMEOUT = 3
+MAX_ERRORS = 3
+PENDING_TOTAL = 16
+PENDING_PER_HOST = 4
+SEND_ERRORS = (RuntimeError, WebSocketDisconnect, OSError)
 ASSETS = {"dashboard.js", "dashboard.css"}
 SECURITY_HEADERS = {
     "Cache-Control": "no-store",
@@ -58,9 +64,10 @@ async def close_socket(socket: WebSocket, code: int):
         pass
 
 
-def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
+def create_app(lan_ip: str, port: int = 8765, clock=time.monotonic) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    session = Session(lan_ip, port)
+    session = Session(lan_ip, port, clock)
+    pending: dict[str, int] = {}
 
     @app.get("/")
     async def dashboard(request: Request):
@@ -98,7 +105,7 @@ def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
         check_admin(request)
         old = session
         old.expires = old.clock()
-        session = Session(lan_ip, port)
+        session = Session(lan_ip, port, clock)
         await asyncio.gather(*(
             close_socket(player.socket, 4002) for player in old.players.values() if player.connected
         ))
@@ -133,13 +140,36 @@ def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
             await socket.close(code=1008)
             return
         await socket.accept()
+        if sum(pending.values()) >= PENDING_TOTAL or pending.get(host, 0) >= PENDING_PER_HOST:
+            # Limita handshakes ainda não autenticados (global e por origem).
+            try:
+                await socket.send_json(envelope("error", code="retry_later"))
+            except SEND_ERRORS:
+                pass
+            await close_socket(socket, 1008)
+            return
         active = session
         player = None
         explicit = False
+        pending[host] = pending.get(host, 0) + 1
         try:
-            hello = await asyncio.wait_for(receive(socket), timeout=5)
+            try:
+                hello = await asyncio.wait_for(receive(socket), timeout=HELLO_TIMEOUT)
+            finally:
+                pending[host] -= 1
+                if not pending[host]:
+                    del pending[host]
             player = active.join(hello, host, socket)
-            await socket.send_json(player.welcome(active.id))
+            try:
+                await socket.send_json(player.welcome(active.id))
+            except SEND_ERRORS:
+                # Jogador recém-criado que nunca recebeu welcome não reserva o slot.
+                explicit = not player.welcomed
+                raise
+            player.welcomed = True
+            replaced, player.replaced = player.replaced, None
+            if replaced is not None:
+                await close_socket(replaced, 4001)
             now = active.clock()
             every_message = TokenBucket(240, 48, now)
             motion_rate = TokenBucket(120, 16, now)
@@ -147,10 +177,34 @@ def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
             last_pong = now
             pending_ping = None
             errors = 0
+
+            async def reject(code: str, seq=None):
+                nonlocal errors
+                errors += 1
+                if errors >= MAX_ERRORS:
+                    raise ProtocolError(code)
+                if seq is None:
+                    await socket.send_json(envelope("error", code=code))
+                else:
+                    await socket.send_json(envelope(
+                        "motion_ack", seq=seq, accepted=False, code=code,
+                        packets=player.packets, missing=player.missing,
+                    ))
+
+            def valid():
+                # Mensagem válida: zera o orçamento de erros consecutivos e
+                # confirma a entrega do welcome (descarta o token anterior).
+                nonlocal errors
+                errors = 0
+                player.confirm()
+
             while True:
                 now = active.clock()
                 if active.expired or active.players.get(player.id) is not player:
                     await close_socket(socket, 4002)
+                    break
+                if player.socket is not socket:
+                    await close_socket(socket, 4001)
                     break
                 if now - last_pong >= PEER_TIMEOUT:
                     await close_socket(socket, 4000)
@@ -164,11 +218,10 @@ def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
                     message = await asyncio.wait_for(receive(socket), timeout=max(0.001, next_ping - now))
                 except TimeoutError:
                     continue
-                except ProtocolError:
-                    errors += 1
-                    if errors >= 3:
-                        raise
-                    await socket.send_json(envelope("error", code="invalid_message"))
+                except ProtocolError as error:
+                    await reject(str(error))
+                    continue
+                if player.socket is not socket:
                     continue
                 now = active.clock()
                 if not every_message.consume(now):
@@ -180,22 +233,26 @@ def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
                     try:
                         player.accept(message, active.id, now)
                     except ProtocolError as error:
-                        errors += 1
-                        if errors >= 3:
-                            raise
-                        await socket.send_json(envelope("error", code=str(error)))
+                        seq = message.get("seq")
+                        await reject(str(error), seq if integer(seq) else None)
                     else:
+                        valid()
+                        # Repetidos ou fora de ordem também são confirmados, sem aplicar.
                         await socket.send_json(envelope(
-                            "motion_ack", seq=message["seq"], packets=player.packets, missing=player.missing,
+                            "motion_ack", seq=message["seq"], accepted=True,
+                            packets=player.packets, missing=player.missing,
                         ))
                 elif kind == "calibration" and type(message.get("calibrated")) is bool:
+                    valid()
                     if player.calibrated != message["calibrated"]:
                         player.latest = None
                     player.calibrated = message["calibrated"]
                     await socket.send_json(envelope("calibration_ack", calibrated=player.calibrated))
                 elif kind == "ping" and integer(message.get("id")):
+                    valid()
                     await socket.send_json(envelope("pong", id=message["id"]))
                 elif kind == "pong" and pending_ping and message.get("id") == pending_ping[0]:
+                    valid()
                     player.rtts.append((now - pending_ping[1]) * 1000)
                     last_pong = now
                     pending_ping = None
@@ -206,18 +263,16 @@ def create_app(lan_ip: str, port: int = 8765) -> FastAPI:
                 elif kind in {"calibration", "ping", "pong"}:
                     continue
                 else:
-                    errors += 1
-                    if errors >= 3:
-                        raise ProtocolError("invalid_message")
+                    await reject("invalid_message")
         except ProtocolError as error:
             try:
                 await socket.send_json(envelope("error", code=str(error)))
-            except (RuntimeError, WebSocketDisconnect, OSError):
+            except SEND_ERRORS:
                 pass
             await close_socket(socket, 1008)
         except TimeoutError:
             await close_socket(socket, 4000)
-        except (RuntimeError, WebSocketDisconnect, OSError):
+        except SEND_ERRORS:
             pass
         finally:
             if player is not None:

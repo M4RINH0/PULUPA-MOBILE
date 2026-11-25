@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:math';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import '../pairing/pairing_invite.dart';
 import '../sensors/sensor_source.dart';
+import 'controller_socket.dart';
 import 'motion_packet.dart';
 import 'motion_transport.dart';
 import 'websocket_motion_transport.dart';
+
+export 'controller_socket.dart';
 
 enum ConnectionPhase { idle, connecting, connected, retrying, failed }
 
@@ -30,7 +33,18 @@ class ConnectedPlayer {
   final String key;
 }
 
-typedef ControllerSocketOpener = Future<WebSocket> Function(Uri address);
+typedef ControllerSocketOpener =
+    Future<ControllerSocket> Function(Uri address);
+
+/// Close codes defined by the motion protocol.
+abstract final class CloseCodes {
+  static const normal = 1000;
+  static const policy = 1008;
+  static const peerTimeout = 4000;
+  static const replaced = 4001;
+  static const sessionEnded = 4002;
+  static const removed = 4003;
+}
 
 class ConnectionController extends ChangeNotifier {
   ConnectionController({
@@ -40,10 +54,41 @@ class ConnectionController extends ChangeNotifier {
     ControllerSocketOpener? open,
   }) : _open = open ?? _openLanSocket;
 
-  static const _retryPolicy = ReconnectPolicy();
+  /// Resuming players retry for most of the server's 60 s reservation.
+  static const _resumePolicy = ReconnectPolicy();
+
+  /// A first pairing gives up sooner; the user is watching the screen.
+  static const _pairingPolicy = ReconnectPolicy(
+    window: Duration(seconds: 20),
+  );
   static const _timeout = Duration(seconds: 4);
-  static const _ackTimeoutUs = 1800000;
+
+  /// Connected this long without a drop, the backoff starts over.
+  static const stablePeriod = Duration(seconds: 10);
+
+  /// Missing motion acks for this long means the PC stopped consuming. Kept
+  /// below the pong timeout but well above a Wi-Fi hiccup.
+  static const _ackTimeoutUs = 4000000;
   static const _pongTimeoutUs = 7000000;
+
+  /// A sensor timestamp that has not changed for this long is stale.
+  static const _staleFrameUs = 500000;
+
+  /// `valid: false` packets go out at 5 Hz while there is no usable frame.
+  static const _invalidPeriodUs = 200000;
+
+  /// Consecutive 1008 closes, without a stable period between them, before
+  /// the controller stops retrying.
+  static const _maxPolicyCloses = 2;
+
+  static const nameRejected =
+      'O PC recusou o nome do jogador. Use de 1 a 32 caracteres visíveis.';
+  static const resumeRejected = 'Reconexão recusada pelo PC; pareie novamente.';
+  static const replacedElsewhere =
+      'Este controle foi conectado em outra conexão.';
+  static const protocolFailure = 'Erro de protocolo com o PC.';
+  static const _attemptAlphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
   static final _colorPattern = RegExp(r'^#[0-9A-Fa-f]{6}$');
   static final _tokenPattern = RegExp(r'^[A-Za-z0-9_-]{32,128}$');
   static final _playerKeyPattern = RegExp(r'^[A-Za-z0-9_-]{16,32}$');
@@ -63,12 +108,17 @@ class ConnectionController extends ChangeNotifier {
   double? loss;
   int sentPackets = 0;
 
+  /// True while the controller sends `valid: false` because no usable sensor
+  /// frame exists.
+  bool sensorDataMissing = false;
+
   LanEndpoint? _endpoint;
   String? _name;
   String? _deviceLabel;
   Map<String, String>? _invite;
   String? _resume;
-  WebSocket? _socket;
+  bool _resuming = false;
+  ControllerSocket? _socket;
   StreamSubscription<dynamic>? _subscription;
   WebSocketMotionTransport? _transport;
   Timer? _retryTimer;
@@ -76,11 +126,24 @@ class ConnectionController extends ChangeNotifier {
   Timer? _sendTimer;
   Timer? _pingTimer;
   Timer? _statsTimer;
+  Timer? _stableTimer;
+  Timer? _deferTimer;
   int _attempt = 0;
+  int? _dropStartedUs;
+  int _policyCloses = 0;
   int _generation = 0;
   int _nextSequence = 0;
-  int _lastFrameUs = -1;
-  int _lastSentUs = 0;
+  // Sensor timestamp of the last real frame turned into a packet.
+  int? _lastFrameUs;
+  // Last sensor timestamp observed and the clock time when it changed.
+  int? _lastSeenFrameUs;
+  int? _lastFreshUs;
+  // `t_us` of the last packet sent, valid or not, and the shift applied to
+  // sensor timestamps so `t_us` keeps increasing (see [_pump]).
+  int _lastSentTUs = -1;
+  int _timestampShiftUs = 0;
+  // Clock time of the last packet sent on the current socket.
+  int? _lastSentUs;
   int _lastPongUs = 0;
   int? _pingId;
   bool? _sentCalibration;
@@ -113,20 +176,20 @@ class ConnectionController extends ChangeNotifier {
     return elapsed > 0 ? (_sendTimes.length - 1) * 1000000 / elapsed : 0;
   }
 
-  static Future<WebSocket> _openLanSocket(Uri address) async {
-    final client = HttpClient()
-      ..connectionTimeout = _timeout
-      ..findProxy = (_) => 'DIRECT';
-    try {
-      return await WebSocket.connect(
-        address.toString(),
-        customClient: client,
-      ).timeout(_timeout);
-    } finally {
-      client.close(force: true);
-    }
+  static Future<ControllerSocket> _openLanSocket(Uri address) =>
+      IoControllerSocket.connect(address, timeout: _timeout);
+
+  /// Idempotency key for one user-initiated pairing. Retries of the same
+  /// pairing reuse it, so the server hands back the same slot.
+  static String _newAttempt() {
+    final random = Random.secure();
+    return String.fromCharCodes([
+      for (var i = 0; i < 32; i++)
+        _attemptAlphabet.codeUnitAt(random.nextInt(_attemptAlphabet.length)),
+    ]);
   }
 
+  /// [name] must already be normalized with `normalizePlayerName`.
   void connectQr(PairingInvite invite, String name, String deviceLabel) {
     _begin(invite.endpoint, name, deviceLabel, {
       'session': invite.sessionId,
@@ -143,6 +206,10 @@ class ConnectionController extends ChangeNotifier {
     _begin(endpoint, name, deviceLabel, {'code': code});
   }
 
+  /// Pairing credentials reused by retries until a welcome arrives.
+  @visibleForTesting
+  Map<String, String>? get pendingInvite => _invite;
+
   void _begin(
     LanEndpoint endpoint,
     String name,
@@ -153,7 +220,7 @@ class ConnectionController extends ChangeNotifier {
     _endpoint = endpoint;
     _name = name;
     _deviceLabel = deviceLabel;
-    _invite = invite;
+    _invite = {...invite, 'attempt': _newAttempt()};
     phase = ConnectionPhase.connecting;
     notifyListeners();
     unawaited(_connect());
@@ -175,14 +242,18 @@ class ConnectionController extends ChangeNotifier {
         return;
       }
       _socket = socket;
-      _subscription = socket.listen(
+      _subscription = socket.stream.listen(
         (message) => _message(generation, message),
         onError: (Object _) =>
             _lost(generation, 'A conexão com o PC foi interrompida.'),
         onDone: () => _closed(generation, socket.closeCode),
         cancelOnError: true,
       );
-      final credentials = player != null && _resume != null
+      // Retrying after a lost welcome is safe: the server keeps accepting the
+      // previous resume token until the new socket proves itself, and a
+      // repeated pairing `attempt` returns the same slot.
+      _resuming = player != null && _resume != null;
+      final credentials = _resuming
           ? {'session': player!.sessionId, 'resume': _resume!}
           : _invite!;
       final sent = _send('hello', {
@@ -205,7 +276,7 @@ class ConnectionController extends ChangeNotifier {
 
   bool _send(String kind, [Map<String, Object?> fields = const {}]) {
     final socket = _socket;
-    if (socket == null || socket.readyState != WebSocket.open) return false;
+    if (socket == null) return false;
     try {
       socket.add(
         jsonEncode({'v': motionProtocolVersion, 'type': kind, ...fields}),
@@ -253,12 +324,15 @@ class ConnectionController extends ChangeNotifier {
         if (_rtts.length > 40) _rtts.removeFirst();
         _pingId = null;
       case 'motion_ack' when data['seq'] is int:
+        // Released whether `accepted` is true or false: a rejected sample
+        // must not block the next one.
         if (_transport?.acknowledge(data['seq'] as int) != true) return;
         final packets = data['packets'];
         final missing = data['missing'];
         if (packets is int && missing is int && packets >= 2 && missing >= 0) {
           loss = missing / (packets + missing);
         }
+        _pump(generation);
       case 'calibration_ack' when data['calibrated'] is bool:
         acknowledgedCalibration = data['calibrated'] as bool;
         notifyListeners();
@@ -305,11 +379,19 @@ class ConnectionController extends ChangeNotifier {
     );
     _resume = resume;
     _invite = null;
-    _attempt = 0;
     error = null;
     phase = ConnectionPhase.connected;
     _lastPongUs = _clock.elapsedMicroseconds;
+    _lastSentUs = null;
     _transport = WebSocketMotionTransport(_socket!.add);
+    // Backoff and the drop window restart only once the link proved stable,
+    // so a server that welcomes and then drops cannot cause endless retries.
+    _stableTimer = Timer(stablePeriod, () {
+      if (generation != _generation) return;
+      _attempt = 0;
+      _dropStartedUs = null;
+      _policyCloses = 0;
+    });
     _startSending(generation);
     _ping(generation);
     _pingTimer = Timer.periodic(
@@ -349,65 +431,150 @@ class ConnectionController extends ChangeNotifier {
     _sendTimer?.cancel();
     _sendTimer = Timer.periodic(
       Duration(microseconds: (1000000 / _sendHz).round()),
-      (_) => _offerFrame(generation),
+      (_) => _pump(generation),
     );
   }
 
-  void _offerFrame(int generation) {
+  /// Sends the newest sample when the transport is free. Runs on every send
+  /// tick and right after each `motion_ack`, so a slow round trip does not
+  /// halve the rate. Never sends more often than once per 1/sendHz.
+  void _pump(int generation) {
     final transport = _transport;
     final active = player;
-    if (transport == null || active == null) return;
+    if (generation != _generation ||
+        phase != ConnectionPhase.connected ||
+        transport == null ||
+        active == null) {
+      return;
+    }
     final calibrated = isCalibrated();
     if (_sentCalibration != calibrated) {
       _sentCalibration = calibrated;
       _send('calibration', {'calibrated': calibrated});
     }
     final now = _clock.elapsedMicroseconds;
+    final lastSent = _lastSentUs;
     if (!transport.available) {
-      if (now - _lastSentUs >= _ackTimeoutUs) {
+      if (lastSent != null && now - lastSent >= _ackTimeoutUs) {
         _lost(generation, 'O PC parou de confirmar o movimento.');
       }
       return;
     }
-    final frame = latestFrame();
-    if (frame == null || frame.timestampUs <= _lastFrameUs) return;
-    _lastFrameUs = frame.timestampUs;
-    try {
-      final packet = MotionPacket.fromDevice(
-        sessionId: active.sessionId,
-        playerId: active.id,
-        sequence: _nextSequence,
-        frame: frame,
-        calibrated: calibrated,
+    final periodUs = (1000000 / _sendHz).round();
+    if (lastSent != null && now - lastSent < periodUs) {
+      _deferTimer ??= Timer(
+        Duration(microseconds: periodUs - (now - lastSent)),
+        () {
+          _deferTimer = null;
+          _pump(generation);
+        },
       );
-      transport.offer(packet);
-      _lastSentUs = now;
-      _nextSequence++;
-      sentPackets++;
-      _sendTimes.addLast(now);
-    } on FormatException {
       return;
+    }
+
+    final frame = latestFrame();
+    if (frame != null && frame.timestampUs != _lastSeenFrameUs) {
+      _lastSeenFrameUs = frame.timestampUs;
+      _lastFreshUs = now;
+    }
+    final fresh =
+        frame != null &&
+        _lastFreshUs != null &&
+        now - _lastFreshUs! <= _staleFrameUs;
+    MotionPacket? packet;
+    if (fresh) {
+      // Same sample as last time: wait for a new one.
+      if (frame.timestampUs == _lastFrameUs) return;
+      _lastFrameUs = frame.timestampUs;
+      // `t_us` must grow strictly across every packet, valid or not.
+      // Invalid packets use the last sent `t_us` + 1 µs, which barely moves
+      // it, so real frames normally keep their own sensor timestamps. If a
+      // sensor timestamp still falls behind (a sensor restart or clock
+      // reset), this and later frames are shifted forward by the minimum
+      // amount instead of being dropped, keeping the spacing between real
+      // samples intact.
+      var timestamp = frame.timestampUs + _timestampShiftUs;
+      if (timestamp <= _lastSentTUs) {
+        _timestampShiftUs += _lastSentTUs + 1 - timestamp;
+        timestamp = _lastSentTUs + 1;
+      }
+      try {
+        packet = MotionPacket.fromDevice(
+          sessionId: active.sessionId,
+          playerId: active.id,
+          sequence: _nextSequence,
+          frame: MotionFrame(
+            timestampUs: timestamp,
+            orientation: frame.orientation,
+            acceleration: frame.acceleration,
+            angularVelocity: frame.angularVelocity,
+          ),
+          calibrated: calibrated,
+        );
+      } on FormatException {
+        packet = null;
+      }
+    }
+    if (packet == null) {
+      if (lastSent != null && now - lastSent < _invalidPeriodUs) return;
+      try {
+        packet = MotionPacket.invalid(
+          sessionId: active.sessionId,
+          playerId: active.id,
+          sequence: _nextSequence,
+          timestampUs: _lastSentTUs + 1,
+          calibrated: calibrated,
+        );
+      } on FormatException {
+        return;
+      }
+    }
+    try {
+      if (!transport.offer(packet)) return;
     } on StateError {
       _lost(generation, 'Não foi possível enviar o movimento.');
+      return;
+    }
+    _lastSentUs = now;
+    _lastSentTUs = packet.frame.timestampUs;
+    _nextSequence++;
+    sentPackets++;
+    _sendTimes.addLast(now);
+    if (sensorDataMissing == packet.valid) {
+      sensorDataMissing = !packet.valid;
+      notifyListeners();
     }
   }
 
   void _closed(int generation, int? closeCode) {
     if (generation != _generation) return;
-    if (closeCode == 4002 || closeCode == 4003) {
-      _finish(
-        closeCode == 4003
-            ? 'O anfitrião desconectou este controle.'
-            : 'A sessão foi encerrada no PC.',
-      );
-    } else {
-      _lost(generation, 'A conexão com o PC foi perdida.');
+    switch (closeCode) {
+      case CloseCodes.normal:
+        // The server closed on purpose; reconnecting would only be refused.
+        _finish('O PC encerrou a conexão.');
+      case CloseCodes.sessionEnded:
+        _finish('A sessão foi encerrada no PC.');
+      case CloseCodes.removed:
+        _finish('O anfitrião desconectou este controle.');
+      case CloseCodes.replaced:
+        // Only the current socket gets here; stale generations, such as a
+        // socket this controller already replaced, were filtered above.
+        _finish(replacedElsewhere);
+      case CloseCodes.policy when ++_policyCloses >= _maxPolicyCloses:
+        _finish(protocolFailure);
+      default:
+        _lost(generation, 'A conexão com o PC foi perdida.');
     }
   }
 
   void _serverError(int generation, Object? code) {
     if (code == 'resume_pending') {
-      _lost(generation, 'Aguardando o PC liberar a conexão anterior.');
+      // Older servers only: wait without spending the backoff budget.
+      _lost(
+        generation,
+        'Aguardando o PC liberar a conexão anterior.',
+        countAttempt: false,
+      );
       return;
     }
     if (phase == ConnectionPhase.connected &&
@@ -415,7 +582,11 @@ class ConnectionController extends ChangeNotifier {
       return;
     }
     _finish(switch (code) {
-      'invalid_invite' => 'Convite inválido ou vencido. Verifique o código ou leia o QR novamente.',
+      'invalid_invite' when _resuming => resumeRejected,
+      'invalid_invite' =>
+        'Convite inválido ou vencido. Verifique o código ou leia o QR novamente.',
+      // During the handshake the only free-form field is the name.
+      'invalid_name' || 'invalid_message' => nameRejected,
       'session_full' => 'A sessão já tem quatro controles.',
       'session_expired' => 'A sessão expirou. Inicie outra sessão no PC.',
       'retry_later' => 'Muitas tentativas de pareamento. Aguarde um minuto.',
@@ -425,14 +596,18 @@ class ConnectionController extends ChangeNotifier {
     });
   }
 
-  void _lost(int generation, String reason) {
+  void _lost(int generation, String reason, {bool countAttempt = true}) {
     if (_disposed || generation != _generation) return;
     _detach();
-    final delay = _retryPolicy.delayFor(_attempt++);
+    final now = _clock.elapsedMicroseconds;
+    final sinceDrop = Duration(microseconds: now - (_dropStartedUs ??= now));
+    final policy = player != null ? _resumePolicy : _pairingPolicy;
+    final delay = policy.delayFor(countAttempt ? _attempt : 1, sinceDrop);
     if (delay == null) {
       _finish('$reason Limite de tentativas de reconexão atingido.');
       return;
     }
+    if (countAttempt) _attempt++;
     phase = ConnectionPhase.retrying;
     final seconds = delay.inMilliseconds < 1000 ? '0,5' : '${delay.inSeconds}';
     error = '$reason Nova tentativa em $seconds s.';
@@ -456,6 +631,9 @@ class ConnectionController extends ChangeNotifier {
     _sendTimer?.cancel();
     _pingTimer?.cancel();
     _statsTimer?.cancel();
+    _stableTimer?.cancel();
+    _deferTimer?.cancel();
+    _deferTimer = null;
     unawaited(_transport?.close());
     _transport = null;
     final socket = _socket;
@@ -469,17 +647,19 @@ class ConnectionController extends ChangeNotifier {
     _sentCalibration = null;
     acknowledgedCalibration = null;
     loss = null;
+    sensorDataMissing = false;
+    _lastSentUs = null;
     _sendTimes.clear();
     _rtts.clear();
   }
 
   static Future<void> _closeSocket(
-    WebSocket socket,
+    ControllerSocket socket,
     StreamSubscription<dynamic>? subscription,
     bool explicit,
   ) async {
     try {
-      if (explicit && socket.readyState == WebSocket.open) {
+      if (explicit) {
         socket.add(
           jsonEncode({'v': motionProtocolVersion, 'type': 'disconnect'}),
         );
@@ -503,9 +683,16 @@ class ConnectionController extends ChangeNotifier {
     _deviceLabel = null;
     _invite = null;
     _resume = null;
+    _resuming = false;
     _attempt = 0;
+    _dropStartedUs = null;
+    _policyCloses = 0;
     _nextSequence = 0;
-    _lastFrameUs = -1;
+    _lastFrameUs = null;
+    _lastSeenFrameUs = null;
+    _lastFreshUs = null;
+    _lastSentTUs = -1;
+    _timestampShiftUs = 0;
     sentPackets = 0;
     error = null;
     phase = ConnectionPhase.idle;

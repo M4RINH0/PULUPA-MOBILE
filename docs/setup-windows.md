@@ -15,7 +15,9 @@ flutter run
 
 Para executar em um emulador, inicie o dispositivo virtual no Android Studio e passe `--dart-define=PULUPA_SIMULATE=true` ao `flutter run`. Se houver mais de um dispositivo, use `flutter run -d <id>` com um dos IDs mostrados por `flutter devices`.
 
-Use um caminho curto, sem `!`, para compilar o app, por exemplo `C:\src\pulupa`. No caminho deste projeto no OneDrive, o wrapper do Gradle pode falhar com `No build receipt resource found` antes de executar a compilação.
+Clone o repositório num caminho curto e sem `!`, por exemplo `git clone <url-do-repositório> C:\src\pulupa`. O nome do projeto tem `!`, mas a pasta não deve ter: com `!` no caminho, o wrapper do Gradle pode falhar com `No build receipt resource found` antes de executar a compilação.
+
+Para gerar um APK de release assinado, crie `mobile-controller/android/key.properties` (fora do git) com `storePassword`, `keyPassword`, `keyAlias` e `storeFile`. Sem esse arquivo, o release usa a assinatura de depuração.
 
 ## Rede e permissões
 
@@ -23,7 +25,9 @@ O Android usa `ACCESS_NETWORK_STATE` para indicar Wi-Fi e `INTERNET` para conver
 
 O servidor usa TCP 8765 por padrão e mantém o painel em `127.0.0.1`. No Firewall do Windows, permita conexões de entrada nessa porta no perfil **Privado**, com origem na sub-rede local. Use o IPv4 que aparece em `ipconfig` para a interface usada pelos jogadores. VPNs e redes de convidados com isolamento entre clientes podem impedir a descoberta do PC. Evite redirecionamento de portas no roteador.
 
-Em caso de dúvida, confirme pelo navegador do PC que `http://127.0.0.1:8765` abre localmente. No celular, confirme que o IP usado coincide com o do painel e que o sistema está na mesma rede. O Wi-Fi ativo é apenas um indicador de rede disponível.
+Em caso de dúvida, confirme pelo navegador do PC que `http://127.0.0.1:8765` abre localmente. No celular, confirme que o IP usado coincide com o do painel e que o sistema está na mesma rede. O Wi-Fi ativo é apenas um indicador de rede disponível. Ele também fica ativo quando o próprio celular é o roteador (hotspot) ou está numa rede Wi-Fi sem internet.
+
+O app permite tráfego sem TLS (`ws://`) porque o servidor fica num IP qualquer da rede local; a política está em `android/app/src/main/res/xml/network_security_config.xml`. Use apenas redes confiáveis.
 
 ## Servidor e simulador
 

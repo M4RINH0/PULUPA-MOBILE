@@ -15,7 +15,7 @@ flutter test
 | 4 — Conexão | QR válido e inválido, pacote, pareamento, stream WebSocket, háptica, confirmação de calibração e reconexão com o mesmo jogador. |
 | 5 — Multiplayer | Quatro jogadores, isolamento de amostras, sessão lotada, expiração, desconexão e reuso de slots. |
 | 6 — Otimização | Controle de frequência, substituição da amostra pendente, gestos e benchmark com quatro emissores. |
-| 7 — Godot | Endpoint local de snapshot e identidade dos fluxos. |
+| 7 — Jogo (Unity) | Endpoint local de snapshot, expiração do movimento em 350 ms e identidade dos fluxos por `player_key`. |
 
 Execute também no servidor.
 
@@ -28,8 +28,8 @@ cd motion-server
 
 ## Roteiro em um Android físico
 
-1. Em **Início**, confira o estado do Wi-Fi. Compare com o Wi-Fi ativado e desativado e aguarde até quatro segundos pela atualização.
-2. Em **Laboratório**, gire o aparelho em cada eixo. Verifique a resposta do modelo e compare as taxas reais em 25, 50 e 100 Hz. Em repouso, a norma da aceleração deve ficar próxima de 9,81 m/s².
+1. Em **Início**, confira o estado do Wi-Fi. Compare com o Wi-Fi ativado e desativado e com o roteador do próprio celular (hotspot) ligado, e aguarde até quatro segundos pela atualização.
+2. Em **Laboratório**, gire o aparelho em cada eixo. Confirme que a interface continua em retrato e que a tela não apaga durante a captura. Verifique a resposta do modelo e compare as taxas reais em 25, 50 e 100 Hz. Em repouso, a norma da aceleração deve ficar próxima de 9,81 m/s².
 3. Em **Calibrar**, segure o aparelho em um ângulo confortável e fique imóvel por dois segundos. A pose centralizada deve aparecer após a confirmação. Teste também com o celular deitado e de lado.
 4. Inicie outra calibração e mexa o aparelho durante a medição. A interface deve recusar a nova referência. Pare o movimento e repita.
 5. Coloque o app em segundo plano e retorne. Confira que o sinal retorna e que é possível iniciar uma nova calibração.
@@ -42,8 +42,9 @@ Repita o roteiro de calibração em um emulador com `--dart-define=PULUPA_SIMULA
 1. Abra o painel no PC e pareie o primeiro celular por QR. Pareie um segundo digitando IP, porta e código do painel.
 2. Calibre os dois em posições confortáveis. Mova um de cada vez e confirme que só o modelo correspondente muda.
 3. Na tela **Laboratório**, compare as métricas com as do painel no PC. Alterne 30, 60 e 100 Hz nas configurações e registre a frequência real, média e p95 de RTT.
-4. Interrompa e restabeleça o Wi-Fi num aparelho dentro da janela de reconexão. Verifique se ele recupera o mesmo jogador e se o outro mantém o fluxo.
-5. Use **Testar toque** e **Desconectar** na ficha de um jogador. Verifique se só esse aparelho recebe a ação.
+4. Interrompa e restabeleça o Wi-Fi num aparelho dentro da janela de reconexão. Verifique se ele recupera o mesmo jogador (mesma `player_key`) e se o outro mantém o fluxo. Se a conexão antiga ainda estiver aberta quando a nova chegar, o servidor a encerra com o código 4001. Os códigos de fechamento estão no [protocolo](../protocol/motion-protocol.md).
+5. Com o jogo Unity aberto, pare e reinicie o servidor. O cliente deve reconectar sozinho (espera de 0,5 s até 5 s) e emitir `PlayerLeft`/`PlayerJoined` conforme os slots somem e voltam.
+6. Use **Testar toque** e **Desconectar** na ficha de um jogador. Verifique se só esse aparelho recebe a ação (o removido recebe o código 4003).
 
 ## Medição em loopback
 

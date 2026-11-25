@@ -31,6 +31,8 @@ class CalibrationPage extends StatelessWidget {
             CalibrationPhase.rejected => 'Medição interrompida',
             CalibrationPhase.idle when missing => 'Sensores indisponíveis',
             CalibrationPhase.idle when !canCalibrate => 'Aguardando leituras',
+            CalibrationPhase.idle when calibration?.feedback != null =>
+              'Recalibre a posição neutra',
             _ => 'Defina sua posição neutra',
           };
           final detail = switch (phase) {
@@ -46,7 +48,7 @@ class CalibrationPage extends StatelessWidget {
             CalibrationPhase.idle when !canCalibrate =>
               controller.error ??
                   'Segure o aparelho e aguarde o sinal dos sensores.',
-            _ => 'Segure o celular como vai jogar e mantenha-o imóvel por dois segundos.',
+            _ => calibration?.feedback ?? 'Segure o celular como vai jogar e mantenha-o imóvel por dois segundos.',
           };
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -16,6 +16,10 @@ class Calibration {
   static const maxOrientationDeviation = 4 * math.pi / 180;
 
   Rotation? reference;
+
+  /// Orientation source active when [reference] was accepted. A reference is
+  /// only meaningful for the source whose world frame produced it.
+  OrientationSource? referenceSource;
   CalibrationPhase phase = CalibrationPhase.idle;
   double progress = 0;
   String? feedback;
@@ -38,17 +42,20 @@ class Calibration {
     _count = 0;
   }
 
-  void clear() {
+  /// Drops the reference. [reason] is kept as [feedback] so the UI can say
+  /// why the neutral pose was lost.
+  void clear({String? reason}) {
     reference = null;
+    referenceSource = null;
     phase = CalibrationPhase.idle;
     progress = 0;
-    feedback = null;
+    feedback = reason;
   }
 
-  void interrupt() {
-    if (phase == CalibrationPhase.collecting) {
-      _reject('O sinal dos sensores foi interrompido. Tente novamente.');
-    }
+  void interrupt([
+    String reason = 'O sinal dos sensores foi interrompido. Tente novamente.',
+  ]) {
+    if (phase == CalibrationPhase.collecting) _reject(reason);
   }
 
   static bool isStationary(Vec3 acceleration, Vec3 gyro) =>

@@ -27,8 +27,8 @@ O servidor responde com `welcome` contendo `session`, `player`, `player_key`, `n
 
 ### Reconexão e substituição
 
-- **Assumir a conexão.** Um `hello` com `resume` válido é aceito mesmo que o servidor ainda considere o jogador conectado (por exemplo, o Wi-Fi caiu e o socket antigo ainda não expirou). O servidor passa o jogador para o novo socket, renova o token de reconexão e encerra o socket antigo com **4001**, sem afetar o jogador. O slot, o estado e a sequência continuam. O código `resume_pending` está obsoleto e não é mais emitido.
-- **Carência do token.** Ao renovar, o servidor guarda o token apresentado como token anterior. Um `hello` com o token atual ou o anterior é aceito, o que cobre um `welcome` perdido no caminho. O token anterior é descartado assim que o servidor recebe no novo socket qualquer mensagem válida (`motion`, `ping`, `pong` ou `calibration`), prova de que o `welcome` chegou. Por isso o cliente deve sempre guardar o `resume` do último `welcome` recebido.
+- **Assumir a conexão.** Um `hello` com `resume` válido é aceito mesmo que o servidor ainda considere o jogador conectado (por exemplo, o Wi-Fi caiu e o socket antigo ainda não expirou). O servidor passa o jogador para o novo socket, renova o token de reconexão e encerra o socket antigo com **4001**, sem afetar o jogador. O slot e o estado continuam; a verificação de ordem de `seq` e `t_us` recomeça no novo socket, porque um app reaberto reinicia a numeração. O código `resume_pending` está obsoleto e não é mais emitido.
+- **Carência do token.** Ao renovar, o servidor guarda o token apresentado como token anterior. Um `hello` com o token atual ou o anterior é aceito, o que cobre um `welcome` perdido no caminho. O token anterior é descartado assim que o servidor recebe no novo socket qualquer mensagem válida (`motion`, `ping`, `pong` ou `calibration`), prova de que o `welcome` chegou. Por isso o cliente deve sempre guardar o `resume` do último `welcome` recebido, de preferência em armazenamento persistente: o app oficial salva `host`, `port`, `session` e `resume` e, se for reaberto dentro da reserva de 180 s, reconecta sozinho na mesma vaga.
 - **Primeiro pareamento idempotente.** O cliente gera um `attempt` aleatório por intenção de pareamento (uma leitura de QR ou um código digitado) e o repete nas novas tentativas desse mesmo pareamento enquanto não receber `welcome`. Se um `hello` com `ticket` ou `code` válido traz o `attempt` de um jogador existente, o servidor devolve esse jogador (assumindo a conexão como acima e renovando `resume`) em vez de ocupar outro slot. Depois do `welcome`, use `resume`. `hello` sem `attempt` continua válido.
 - Se o envio do `welcome` falhar para um jogador recém-criado, o servidor o remove e libera o slot.
 
@@ -132,7 +132,7 @@ Erros de protocolo depois do `welcome` (JSON inválido, tipo desconhecido, movim
 | Prazo para o `hello` | 3 s | Servidor |
 | Intervalo de `ping` | 2 s | Servidor |
 | Par sem resposta (sem `pong`) | 8 s, encerra com 4000 | Servidor |
-| Reserva do slot para `resume` | 60 s | Servidor |
+| Reserva do slot para `resume` | 180 s | Servidor |
 | Validade do ticket e do código | 120 s, ou até 20 falhas no convite | Servidor |
 | Duração da sessão | 2 h | Servidor |
 | Janela do bloqueio por origem | 60 s (8 falhas) | Servidor |

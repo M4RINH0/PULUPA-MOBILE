@@ -128,12 +128,12 @@ void main() {
     );
     expect(policy.delayFor(40, Duration.zero), const Duration(seconds: 5));
     expect(
-      policy.delayFor(3, const Duration(seconds: 51)),
+      policy.delayFor(3, const Duration(seconds: 166)),
       const Duration(seconds: 4),
     );
-    expect(policy.delayFor(3, const Duration(seconds: 52)), isNull);
+    expect(policy.delayFor(3, const Duration(seconds: 167)), isNull);
     // Sum of the delays until the window closes: the client keeps trying for
-    // most of the server's 60 s reservation instead of five attempts.
+    // most of the server's 180 s reservation instead of five attempts.
     var elapsed = Duration.zero;
     var attempts = 0;
     for (
@@ -145,8 +145,8 @@ void main() {
       attempts++;
     }
     expect(attempts, greaterThan(10));
-    expect(elapsed, lessThanOrEqualTo(const Duration(seconds: 55)));
-    expect(elapsed, greaterThan(const Duration(seconds: 50)));
+    expect(elapsed, lessThanOrEqualTo(const Duration(seconds: 170)));
+    expect(elapsed, greaterThan(const Duration(seconds: 165)));
   });
 
   test('invalid packets carry identity orientation and zero vectors', () {

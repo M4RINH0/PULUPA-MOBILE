@@ -44,7 +44,7 @@ class _ControllerShellState extends State<_ControllerShell> {
   late final MotionController _controller;
   late final ConnectionController _connection;
   int _page = 0;
-  bool? _keepScreenOn;
+  bool? _live;
 
   @override
   void initState() {
@@ -54,31 +54,65 @@ class _ControllerShellState extends State<_ControllerShell> {
       latestFrame: () => _controller.latestMotionFrame,
       isCalibrated: () => _controller.isCalibrated,
       onFeedback: _controller.feedback,
+      onSessionChanged: (session) =>
+          unawaited(_native(() => PlatformSensors.saveSession(session?.encode()))),
     );
     _controller.status.addListener(_applySendRate);
-    _connection.addListener(_applyKeepScreenOn);
+    _connection.addListener(_applyLiveSession);
     unawaited(_controller.initialize());
+    unawaited(_restoreSession());
   }
 
-  /// Keeps the display awake while a game connection is live or recovering,
-  /// so the OS does not suspend sensors and sockets mid-game.
-  void _applyKeepScreenOn() {
-    final enabled =
-        _connection.phase == ConnectionPhase.connected ||
-        (_connection.phase == ConnectionPhase.retrying &&
-            _connection.player != null);
-    if (_keepScreenOn == enabled) return;
-    _keepScreenOn = enabled;
-    unawaited(_setKeepScreenOn(enabled));
+  /// A game is live, or being recovered, with a known player slot.
+  bool get _hasLiveGame =>
+      _connection.player != null &&
+      (_connection.phase == ConnectionPhase.connected ||
+          _connection.phase == ConnectionPhase.connecting ||
+          _connection.phase == ConnectionPhase.retrying);
+
+  /// While a game is live: the screen stays on, and the foreground service
+  /// plus background capture keep sending motion if the player locks the
+  /// screen (to avoid accidental touches) or leaves the app.
+  void _applyLiveSession() {
+    final enabled = _hasLiveGame;
+    if (_live == enabled) return;
+    _live = enabled;
+    _controller.keepCaptureInBackground = enabled;
+    unawaited(_native(() => PlatformSensors.setKeepScreenOn(enabled)));
+    unawaited(_native(() => PlatformSensors.setBackgroundSession(enabled)));
+    if (mounted) setState(() {});
   }
 
-  static Future<void> _setKeepScreenOn(bool enabled) async {
+  /// Rejoins the slot if the app was closed mid-game within the server's
+  /// reservation window.
+  Future<void> _restoreSession() async {
+    String? raw;
     try {
-      await PlatformSensors.setKeepScreenOn(enabled);
+      raw = await PlatformSensors.loadSession();
+    } on MissingPluginException {
+      return;
+    } on PlatformException {
+      return;
+    }
+    final saved = SavedSession.decode(raw);
+    if (!mounted || saved == null) return;
+    if (!saved.isFresh(DateTime.now())) {
+      unawaited(_native(() => PlatformSensors.saveSession(null)));
+      return;
+    }
+    if (_connection.phase != ConnectionPhase.idle) return;
+    _connection.resumeSaved(saved);
+  }
+
+  /// Native calls are conveniences; they never break the session, and tests
+  /// run without the channel.
+  static Future<void> _native(Future<void> Function() call) async {
+    try {
+      await call();
     } on MissingPluginException {
       // Tests and platforms without the native channel.
     } on PlatformException {
-      // Keeping the screen on is a convenience; never break the session.
+      // Ignored on purpose.
     }
   }
 
@@ -88,8 +122,11 @@ class _ControllerShellState extends State<_ControllerShell> {
   @override
   void dispose() {
     _controller.status.removeListener(_applySendRate);
-    _connection.removeListener(_applyKeepScreenOn);
-    if (_keepScreenOn == true) unawaited(_setKeepScreenOn(false));
+    _connection.removeListener(_applyLiveSession);
+    if (_live == true) {
+      unawaited(_native(() => PlatformSensors.setKeepScreenOn(false)));
+      unawaited(_native(() => PlatformSensors.setBackgroundSession(false)));
+    }
     _connection.dispose();
     _controller.dispose();
     super.dispose();
@@ -118,7 +155,19 @@ class _ControllerShellState extends State<_ControllerShell> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => PopScope(
+    // Back with a live game minimizes instead of closing, so a stray press
+    // does not drop the player.
+    canPop: !_hasLiveGame,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) {
+        unawaited(_native(() async => PlatformSensors.moveToBackground()));
+      }
+    },
+    child: _shell(context),
+  );
+
+  Widget _shell(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(switch (_page) {
         1 => 'Calibração',

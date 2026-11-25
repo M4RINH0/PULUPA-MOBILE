@@ -31,9 +31,11 @@ cd motion-server
 1. Em **Início**, confira o estado do Wi-Fi. Compare com o Wi-Fi ativado e desativado e com o roteador do próprio celular (hotspot) ligado, e aguarde até quatro segundos pela atualização.
 2. Em **Laboratório**, gire o aparelho em cada eixo. Confirme que a interface continua em retrato e que a tela não apaga durante a captura. Verifique a resposta do modelo e compare as taxas reais em 25, 50 e 100 Hz. Em repouso, a norma da aceleração deve ficar próxima de 9,81 m/s².
 3. Em **Calibrar**, segure o aparelho como vai jogar (em pé ou deitado de lado pelas laterais) e mantenha-o firme por 1,5 s; tremor normal da mão não deve cancelar a medição. Depois, no **Laboratório**, confira: virar o corpo para a direita aumenta **Giro**, abaixar o lado direito aumenta **Balanço** e inclinar o topo para longe aumenta **Frente/trás**, sem misturar eixos, tanto em pé quanto de lado.
-4. Inicie outra calibração e mexa o aparelho durante a medição. A interface deve recusar a nova referência. Pare o movimento e repita.
+4. Inicie outra calibração e mexa o aparelho durante a medição. A medição deve recomeçar com "Segure firme" e só falhar se o movimento continuar por 10 s. Pare o movimento e confirme que ela conclui.
 5. Coloque o app em segundo plano e retorne. Confira que o sinal retorna e que é possível iniciar uma nova calibração.
-6. Desative a háptica em Configurações e confirme uma calibração silenciosa. Feche e reabra o app para verificar a persistência das preferências.
+6. Com o controle conectado a um PC, bloqueie a tela pelo botão de energia por 30 s. O painel deve continuar mostrando Hz e a pose; a notificação "PULUPA conectado" deve aparecer. Desbloqueie e confira que nada foi recalibrado.
+7. Ainda conectado, aperte voltar: o app deve ir para o fundo, sem desconectar. Depois remova o app dos recentes e reabra em menos de 3 minutos: ele deve voltar sozinho à mesma vaga (mesmo número e cor no painel). Recalibre, porque a referência neutra não sobrevive ao fechamento.
+8. Desative a háptica em Configurações e confirme uma calibração silenciosa. Feche e reabra o app para verificar a persistência das preferências.
 
 Repita o roteiro de calibração em um emulador com `--dart-define=PULUPA_SIMULATE=true`, usando o botão **Simular movimento** para alternar entre os estados. Valide a orientação e as taxas reais num aparelho físico.
 

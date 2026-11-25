@@ -124,6 +124,19 @@ class SessionTests(unittest.TestCase):
         self.time = 0
         self.session = Session("192.168.1.10", 8765, clock=lambda: self.time)
 
+    def test_reopened_app_restarts_sequence_after_resume(self):
+        player = self.session.join(envelope("hello", name="Ana", code=self.session.code),
+                                   "192.168.1.2", object())
+        self.assertTrue(player.accept(packet(self.session.id, player.id, 500), self.session.id, 0))
+        self.session.leave(player, player.socket)
+        self.time = RESUME_SECONDS - 1
+        resumed = self.session.join(
+            envelope("hello", name="Ana", session=self.session.id, resume=player.resume),
+            "192.168.1.2", object(),
+        )
+        self.assertIs(resumed, player)
+        self.assertTrue(player.accept(packet(self.session.id, player.id, 0), self.session.id, 1))
+
     def test_rotates_invite_and_expires_session(self):
         self.assertRegex(self.session.code, r"^\d{6}$")
         old_ticket = self.session.ticket

@@ -62,6 +62,22 @@ class PlatformSensors implements SensorSource {
   static Future<void> saveSettings(Map<String, Object> values) =>
       _device.invokeMethod<void>('saveSettings', values);
 
+  /// Starts or stops the native foreground service that keeps sensors and
+  /// Wi-Fi running while the screen is locked mid-game.
+  static Future<void> setBackgroundSession(bool enabled) =>
+      _device.invokeMethod<void>('setBackgroundSession', enabled);
+
+  /// Sends the app to the background without closing it (back button while
+  /// a game is connected).
+  static Future<bool> moveToBackground() async =>
+      await _device.invokeMethod<bool>('moveToBackground') ?? false;
+
+  static Future<String?> loadSession() =>
+      _device.invokeMethod<String>('loadSession');
+
+  static Future<void> saveSession(String? encoded) =>
+      _device.invokeMethod<void>('saveSession', encoded);
+
   static Future<void> setKeepScreenOn(bool enabled) =>
       _device.invokeMethod<void>('setKeepScreenOn', enabled);
 }

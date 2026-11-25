@@ -1,6 +1,8 @@
 package com.pulupa.pulupa_controller
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -33,6 +35,8 @@ class MainActivity : FlutterActivity() {
             setStreamHandler(sensors)
         }
         val preferences = getSharedPreferences("controller", Context.MODE_PRIVATE)
+        // Separado das configurações: "loadSettings" devolve tudo de "controller".
+        val sessions = getSharedPreferences("controller_session", Context.MODE_PRIVATE)
         deviceChannel = MethodChannel(messenger, "pulupa/device").apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -52,6 +56,29 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    "setBackgroundSession" -> {
+                        val enabled = call.arguments as? Boolean ?: false
+                        setBackgroundSession(enabled)
+                        result.success(null)
+                    }
+                    "moveToBackground" -> {
+                        // Botão voltar com o controle conectado: mantém o app vivo.
+                        result.success(moveTaskToBack(true))
+                    }
+                    "loadSession" -> result.success(sessions.getString("session", null))
+                    "saveSession" -> {
+                        val value = call.arguments as? String
+                        if (value == null) {
+                            sessions.edit().remove("session").apply()
+                        } else {
+                            sessions.edit().putString("session", value).apply()
+                        }
+                        result.success(null)
+                    }
+                    "clearSession" -> {
+                        sessions.edit().remove("session").apply()
+                        result.success(null)
+                    }
                     "loadSettings" -> result.success(preferences.all)
                     "saveSettings" -> {
                         val editor = preferences.edit()
@@ -68,6 +95,35 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        }
+    }
+
+    private var backgroundSession = false
+
+    /**
+     * Liga o serviço em primeiro plano enquanto há um jogo conectado, para que
+     * sensores e Wi-Fi continuem com a tela bloqueada.
+     */
+    private fun setBackgroundSession(enabled: Boolean) {
+        if (enabled == backgroundSession) return
+        backgroundSession = enabled
+        if (enabled) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                // Sem a permissão o serviço roda igual, só sem notificação visível.
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            }
+            try {
+                ControllerService.start(this)
+            } catch (failure: Exception) {
+                // Android 12+ recusa iniciar o serviço com o app em segundo plano;
+                // ele é ligado assim que o app volta à frente.
+                backgroundSession = false
+            }
+        } else {
+            ControllerService.stop(this)
         }
     }
 
@@ -127,6 +183,11 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         imu?.stop()
+        if (backgroundSession) {
+            // A atividade (e o engine do Flutter) acabou: não há mais quem envie.
+            ControllerService.stop(this)
+            backgroundSession = false
+        }
         super.onDestroy()
     }
 }

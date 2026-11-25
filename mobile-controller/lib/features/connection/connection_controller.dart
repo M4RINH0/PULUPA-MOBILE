@@ -11,9 +11,11 @@ import '../sensors/sensor_source.dart';
 import 'controller_socket.dart';
 import 'motion_packet.dart';
 import 'motion_transport.dart';
+import 'saved_session.dart';
 import 'websocket_motion_transport.dart';
 
 export 'controller_socket.dart';
+export 'saved_session.dart';
 
 enum ConnectionPhase { idle, connecting, connected, retrying, failed }
 
@@ -51,10 +53,15 @@ class ConnectionController extends ChangeNotifier {
     required this.latestFrame,
     required this.isCalibrated,
     required this.onFeedback,
+    this.onSessionChanged,
     ControllerSocketOpener? open,
   }) : _open = open ?? _openLanSocket;
 
-  /// Resuming players retry for most of the server's 60 s reservation.
+  /// While connected the save is refreshed this often, so its age tells how
+  /// long ago the link was last alive.
+  static const _savePeriod = Duration(seconds: 15);
+
+  /// Resuming players retry for most of the server's 180 s reservation.
   static const _resumePolicy = ReconnectPolicy();
 
   /// A first pairing gives up sooner; the user is watching the screen.
@@ -96,6 +103,10 @@ class ConnectionController extends ChangeNotifier {
   final MotionFrame? Function() latestFrame;
   final bool Function() isCalibrated;
   final VoidCallback onFeedback;
+
+  /// Receives the credentials to persist after each welcome (and
+  /// periodically while connected), or null when they must be forgotten.
+  final void Function(SavedSession? session)? onSessionChanged;
   final ControllerSocketOpener _open;
   final _clock = clock.stopwatch()..start();
   final _rtts = Queue<double>();
@@ -128,6 +139,7 @@ class ConnectionController extends ChangeNotifier {
   Timer? _statsTimer;
   Timer? _stableTimer;
   Timer? _deferTimer;
+  Timer? _saveTimer;
   int _attempt = 0;
   int? _dropStartedUs;
   int _policyCloses = 0;
@@ -381,6 +393,8 @@ class ConnectionController extends ChangeNotifier {
     _invite = null;
     error = null;
     phase = ConnectionPhase.connected;
+    _saveSession();
+    _saveTimer = Timer.periodic(_savePeriod, (_) => _saveSession());
     _lastPongUs = _clock.elapsedMicroseconds;
     _lastSentUs = null;
     _transport = WebSocketMotionTransport(_socket!.add);
@@ -616,6 +630,7 @@ class ConnectionController extends ChangeNotifier {
   }
 
   void _finish(String detail) {
+    onSessionChanged?.call(null);
     _detach();
     _retryTimer?.cancel();
     _invite = null;
@@ -634,6 +649,8 @@ class ConnectionController extends ChangeNotifier {
     _stableTimer?.cancel();
     _deferTimer?.cancel();
     _deferTimer = null;
+    _saveTimer?.cancel();
+    _saveTimer = null;
     unawaited(_transport?.close());
     _transport = null;
     final socket = _socket;
@@ -672,7 +689,66 @@ class ConnectionController extends ChangeNotifier {
     }
   }
 
-  void disconnect() => _reset();
+  /// Leaves the game on purpose: tells the PC and forgets the saved session.
+  void disconnect() {
+    onSessionChanged?.call(null);
+    _reset();
+  }
+
+  /// Rejoins the slot of a session saved before the app was closed.
+  void resumeSaved(SavedSession saved) {
+    _reset(notify: false);
+    final LanEndpoint endpoint;
+    try {
+      endpoint = saved.endpoint;
+    } on FormatException {
+      onSessionChanged?.call(null);
+      return;
+    }
+    _endpoint = endpoint;
+    _name = saved.name;
+    _deviceLabel = saved.deviceLabel;
+    player = ConnectedPlayer(
+      saved.playerId,
+      saved.name,
+      saved.color,
+      saved.sessionId,
+      saved.playerKey,
+    );
+    _resume = saved.resume;
+    // The retry window counts from the moment the link was last known alive,
+    // matching the server's reservation.
+    final age = clock.now().difference(saved.savedAt);
+    _dropStartedUs =
+        _clock.elapsedMicroseconds - (age.isNegative ? 0 : age.inMicroseconds);
+    phase = ConnectionPhase.connecting;
+    notifyListeners();
+    unawaited(_connect());
+  }
+
+  void _saveSession() {
+    final current = player;
+    final endpoint = _endpoint;
+    final resume = _resume;
+    final name = _name;
+    if (current == null || endpoint == null || resume == null || name == null) {
+      return;
+    }
+    onSessionChanged?.call(
+      SavedSession(
+        host: endpoint.host,
+        port: endpoint.port,
+        sessionId: current.sessionId,
+        resume: resume,
+        playerId: current.id,
+        playerKey: current.key,
+        name: current.name,
+        color: current.color,
+        deviceLabel: _deviceLabel ?? '',
+        savedAt: clock.now(),
+      ),
+    );
+  }
 
   void _reset({bool notify = true}) {
     _retryTimer?.cancel();
@@ -702,7 +778,10 @@ class ConnectionController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _reset(notify: false);
+    _retryTimer?.cancel();
+    // Closing the app is not leaving the game: no `disconnect` message, and
+    // the saved session stays so a reopened app can rejoin the slot.
+    _detach();
     super.dispose();
   }
 }

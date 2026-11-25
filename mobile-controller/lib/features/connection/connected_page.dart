@@ -84,6 +84,15 @@ class ConnectedPage extends StatelessWidget {
               alert: true,
             ),
           ),
+        if (connected)
+          const Panel(
+            child: StatusLine(
+              icon: Icons.lock_outline_rounded,
+              label: 'Pode bloquear a tela',
+              detail:
+                  'O controle continua enviando com a tela bloqueada, sem risco de toques acidentais. Se fechar o app sem querer, abra de novo em até 3 minutos para voltar à mesma vaga.',
+            ),
+          ),
         ValueListenableBuilder(
           valueListenable: motion.telemetry,
           builder: (context, _, _) {

@@ -192,6 +192,33 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('with a live game, locking the screen keeps the capture running', (
+    tester,
+  ) async {
+    final controller = await calibratedController(tester);
+    controller.keepCaptureInBackground = true;
+    setLifecycle(controller, AppLifecycleState.inactive);
+    setLifecycle(controller, AppLifecycleState.paused);
+    await settleCapture(tester);
+    await advance(tester, 4);
+    final frame = controller.latestMotionFrame;
+    expect(frame, isNotNull);
+    await advance(tester, 4);
+    expect(
+      controller.latestMotionFrame!.timestampUs,
+      greaterThan(frame!.timestampUs),
+    );
+    expect(controller.isCalibrated, isTrue);
+
+    // Once the game ends, a background app stops reading the sensors.
+    controller.keepCaptureInBackground = false;
+    await settleCapture(tester);
+    await advance(tester, 2);
+    expect(controller.latestMotionFrame, isNull);
+    controller.dispose();
+    await tester.pump();
+  });
+
   testWidgets('a pause interrupts a calibration in progress', (tester) async {
     final controller = await calibratedController(tester);
     controller.startCalibration();

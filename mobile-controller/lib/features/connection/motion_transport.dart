@@ -11,11 +11,11 @@ abstract interface class MotionTransport {
 
 /// Backoff for reconnecting after a dropped connection. Retries continue,
 /// with delays capped at [maxDelay], until [window] has elapsed since the
-/// drop. The server keeps a dropped slot for 60 s, so the default window ends
+/// drop. The server keeps a dropped slot for 180 s, so the default window ends
 /// a little earlier to leave room for the last handshake.
 class ReconnectPolicy {
   const ReconnectPolicy({
-    this.window = const Duration(seconds: 55),
+    this.window = const Duration(seconds: 170),
     this.maxDelay = const Duration(seconds: 5),
   });
 

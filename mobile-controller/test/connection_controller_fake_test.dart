@@ -126,11 +126,13 @@ class Harness {
       latestFrame: () => frames ? frame(sensorUs += 5000) : null,
       isCalibrated: () => true,
       onFeedback: () {},
+      onSessionChanged: saves.add,
       open: server.open,
     );
   }
 
   final server = FakeServer();
+  final saves = <SavedSession?>[];
   late final ConnectionController link;
   bool frames;
   int sensorUs = 1000000;
@@ -215,9 +217,9 @@ void main() {
     await tester.pump();
     expect(h.link.phase, ConnectionPhase.retrying);
     expect(h.link.error, contains('Nova tentativa em 0,5 s.'));
-    await _elapse(tester, const Duration(seconds: 50));
+    await _elapse(tester, const Duration(seconds: 165));
     expect(h.link.phase, ConnectionPhase.retrying);
-    expect(h.server.opens, greaterThan(10));
+    expect(h.server.opens, greaterThan(30));
     await _elapse(tester, const Duration(seconds: 6));
     expect(h.link.phase, ConnectionPhase.failed);
     expect(h.link.error, contains('Limite de tentativas'));
@@ -502,5 +504,112 @@ void main() {
     expect(h.server.last.ofType('motion').last['valid'], isFalse);
     link.dispose();
     await h.dispose(tester);
+  });
+
+  group('saved session', () {
+    testWidgets('welcome saves the credentials and refreshes them while connected', (
+      tester,
+    ) async {
+      final h = Harness();
+      await h.connect(tester);
+      final saved = h.saves.last!;
+      expect(saved.resume, _firstToken);
+      expect(saved.sessionId, _session);
+      expect(saved.playerId, 2);
+      expect(saved.playerKey, 'player_key_abcdef');
+      expect(saved.host, '192.168.1.22');
+      expect(SavedSession.decode(saved.encode())!.resume, _firstToken);
+      final count = h.saves.length;
+      await _elapse(tester, const Duration(seconds: 16));
+      expect(h.saves.length, greaterThan(count));
+      expect(h.saves.last!.savedAt.isAfter(saved.savedAt), isTrue);
+      await h.dispose(tester);
+    });
+
+    testWidgets('closing the app keeps the slot; leaving on purpose forgets it', (
+      tester,
+    ) async {
+      final h = Harness();
+      await h.connect(tester);
+      final socket = h.server.last;
+      h.link.dispose();
+      await tester.pump(const Duration(seconds: 2));
+      expect(socket.ofType('disconnect'), isEmpty);
+      expect(h.saves.last, isNotNull);
+
+      final other = Harness();
+      await other.connect(tester);
+      other.link.disconnect();
+      await tester.pump();
+      expect(other.server.last.ofType('disconnect'), hasLength(1));
+      expect(other.saves.last, isNull);
+      await other.dispose(tester);
+    });
+
+    testWidgets('a reopened app rejoins the saved slot with its resume token', (
+      tester,
+    ) async {
+      final first = Harness();
+      await first.connect(tester);
+      final saved = first.saves.last!;
+      first.link.dispose();
+      await tester.pump(const Duration(seconds: 2));
+
+      final reopened = Harness();
+      reopened.server.autoWelcome = true;
+      reopened.link.resumeSaved(saved);
+      expect(reopened.link.player?.id, 2);
+      await tester.pump();
+      final hello = reopened.server.last.hello;
+      expect(hello['resume'], _firstToken);
+      expect(hello['session'], _session);
+      expect(hello.containsKey('attempt'), isFalse);
+      await tester.pump();
+      expect(reopened.link.phase, ConnectionPhase.connected);
+      expect(reopened.saves.last!.resume, _nextToken);
+      await reopened.dispose(tester);
+    });
+
+    testWidgets('a refused resume forgets the saved session', (tester) async {
+      final first = Harness();
+      await first.connect(tester);
+      final saved = first.saves.last!;
+      first.link.dispose();
+      await tester.pump(const Duration(seconds: 2));
+
+      final reopened = Harness();
+      reopened.link.resumeSaved(saved);
+      await tester.pump();
+      reopened.server.last.reply('error', {'code': 'invalid_invite'});
+      await tester.pump();
+      expect(reopened.link.phase, ConnectionPhase.failed);
+      expect(reopened.link.error, ConnectionController.resumeRejected);
+      expect(reopened.saves.last, isNull);
+      await reopened.dispose(tester);
+    });
+
+    test('old or malformed saves are not used', () {
+      final now = DateTime(2026, 11, 25, 12);
+      SavedSession at(DateTime time) => SavedSession(
+        host: '192.168.1.22',
+        port: 8765,
+        sessionId: _session,
+        resume: _firstToken,
+        playerId: 1,
+        playerKey: 'player_key_abcdef',
+        name: 'Ana',
+        color: 0xFF345CFF,
+        deviceLabel: 'Teste',
+        savedAt: time,
+      );
+      expect(at(now.subtract(const Duration(seconds: 60))).isFresh(now), isTrue);
+      expect(at(now.subtract(const Duration(seconds: 175))).isFresh(now), isFalse);
+      expect(at(now.add(const Duration(seconds: 5))).isFresh(now), isFalse);
+      expect(SavedSession.decode(null), isNull);
+      expect(SavedSession.decode('{"host": 1}'), isNull);
+      expect(SavedSession.decode('not json'), isNull);
+      final public = at(now).encode().replaceFirst('192.168.1.22', '8.8.8.8');
+      expect(SavedSession.decode(public), isNull);
+    });
   });
 }

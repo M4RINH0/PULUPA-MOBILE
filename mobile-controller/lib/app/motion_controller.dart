@@ -48,6 +48,21 @@ class MotionController with WidgetsBindingObserver {
   bool _disposed = false;
   bool _ready = false;
   bool _foreground = true;
+  bool _keepAlive = false;
+
+  /// Capture runs in the foreground, and also in the background while a game
+  /// connection asked for it (screen locked mid-game).
+  bool get _capturing => _foreground || _keepAlive;
+
+  /// Keeps the sensors running while the app is in the background, for a
+  /// game played with the screen locked. The native foreground service keeps
+  /// the process and the radio awake; this keeps the capture itself going.
+  set keepCaptureInBackground(bool enabled) {
+    if (enabled == _keepAlive) return;
+    final before = _capturing;
+    _keepAlive = enabled;
+    if (_ready && before != _capturing) _updateCapture();
+  }
   bool _checkingWifi = false;
 
   SimulatedSensors? get simulator => switch (source) {
@@ -136,8 +151,11 @@ class MotionController with WidgetsBindingObserver {
       AppLifecycleState.inactive => _foreground,
     };
     if (foreground == _foreground) return;
+    final before = _capturing;
     _foreground = foreground;
-    if (_ready) _updateCapture();
+    // Locking the screen mid-game keeps the capture (and the calibration
+    // measurement in progress) untouched.
+    if (_ready && before != _capturing) _updateCapture();
   }
 
   void _updateCapture({bool resetCalibration = false}) {
@@ -157,7 +175,7 @@ class MotionController with WidgetsBindingObserver {
     _transition = _transition.then((_) async {
       await _subscription?.cancel();
       _subscription = null;
-      if (!_isCurrent(generation) || !_foreground) return;
+      if (!_isCurrent(generation) || !_capturing) return;
       error = null;
       try {
         final hardware = await source.capabilities();
@@ -279,7 +297,7 @@ class MotionController with WidgetsBindingObserver {
   }
 
   void retryCapture() {
-    if (_ready && _foreground) _updateCapture();
+    if (_ready && _capturing) _updateCapture();
   }
 
   void updateSettings(ControllerSettings value) {

@@ -12,7 +12,8 @@ from .protocol import ATTEMPT, ProtocolError, TOKEN, device_label, envelope, pla
 COLORS = ("#345CFF", "#FF55A5", "#FFD928", "#8B5CF6")
 SESSION_SECONDS = 7200
 INVITE_SECONDS = 120
-RESUME_SECONDS = 60
+# Cobre reabrir o app depois de fechá-lo sem querer.
+RESUME_SECONDS = 180
 FRAME_SECONDS = 0.35
 MANUAL_CODE = re.compile(r"[0-9]{6}")
 HOST_FAILURES = 8
@@ -88,6 +89,10 @@ class Player:
         self.socket = socket
         self.previous_resume = presented if presented is not None else self.resume
         self.resume = secrets.token_urlsafe(32)
+        # Um app reaberto recomeça seq e pode reiniciar a origem de t_us; a
+        # ordem só importa dentro de um mesmo socket, e o antigo é descartado.
+        self.last_seq = -1
+        self.last_timestamp = -1
         self.arrivals.clear()
         self.rtts.clear()
 

@@ -52,7 +52,7 @@ class LabPage extends StatelessWidget {
               hz: controller.rate(SensorKind.angularVelocity),
             ),
             OrientationReadout(
-              orientation: controller.orientation,
+              orientation: controller.gameOrientation,
               quaternion: true,
             ),
             Panel(

@@ -55,6 +55,33 @@ class MotionProcessor {
   Rotation? orientationAt(int nowUs) =>
       _isLive(SensorKind.orientation, nowUs) ? _orientation : null;
 
+  /// Rotation in game axes for diagnostics: the calibrated rotation sent to
+  /// the game (identity at the neutral pose) or, before calibration, the
+  /// pose relative to a phone held upright in portrait facing the player.
+  Rotation? gameOrientationAt(int nowUs) {
+    final orientation = orientationAt(nowUs);
+    final raw = _rawOrientation;
+    if (orientation == null || raw == null) return null;
+    return calibration.reference == null
+        ? poseInGameAxes(raw, headingOf(raw))
+        : rotationInGameAxes(orientation);
+  }
+
+  /// Device-to-game pose for the 3D preview, so the model shows the phone the
+  /// way the player holds it (portrait, sideways, reclined). After
+  /// calibration it is the neutral pose moved by the filtered calibrated
+  /// rotation, so the preview matches what the game receives.
+  Rotation? previewAt(int nowUs) {
+    final orientation = orientationAt(nowUs);
+    final raw = _rawOrientation;
+    if (orientation == null || raw == null) return null;
+    final reference = calibration.reference;
+    if (reference == null) return poseInGameAxes(raw, headingOf(raw));
+    final heading = headingOf(reference);
+    return (deviceWorldToGame * orientation * heading.inverseUnit * reference)
+        .normalized();
+  }
+
   double rateAt(SensorKind kind, int nowUs) =>
       _isLive(kind, nowUs) ? _rates[kind]!.hz : 0;
 

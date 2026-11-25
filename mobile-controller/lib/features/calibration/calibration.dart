@@ -6,14 +6,24 @@ import '../sensors/sensor_source.dart';
 
 enum CalibrationPhase { idle, collecting, accepted, rejected }
 
+/// Neutral-pose measurement tuned for a phone held in the hands.
+///
+/// Gyro and accelerometer are low-passed (~150 ms) before the limits are
+/// checked, so hand tremor and isolated spikes are ignored. A movement that
+/// still exceeds the limits restarts the window instead of failing; the
+/// attempt only fails after [attemptTimeoutUs] without a steady window.
 class Calibration {
-  static const windowUs = 2000000;
+  static const windowUs = 1500000;
   static const maxGapUs = 200000;
-  static const minimumFrames = 31;
-  static const maxAngularVelocity = 0.18;
-  static const maxGravityDeviation = 0.65;
-  static const maxAccelerationChange = 0.75;
-  static const maxOrientationDeviation = 4 * math.pi / 180;
+  static const minimumFrames = 23;
+  static const smoothingUs = 150000;
+  static const attemptTimeoutUs = 10000000;
+  // About 30°/s of smoothed rotation: tremor passes, a deliberate turn does not.
+  static const maxAngularVelocity = 0.5;
+  static const maxGravityDeviation = 1.5;
+  static const maxAccelerationChange = 1.5;
+  static const maxOrientationDeviation = 10 * math.pi / 180;
+  static const holdStillFeedback = 'Segure firme: recomeçando a medição.';
 
   Rotation? reference;
 
@@ -28,18 +38,23 @@ class Calibration {
   Rotation? _average;
   int? _startUs;
   int? _previousUs;
+  int? _attemptStartUs;
   int _count = 0;
+  double? _gyro;
+  int? _gyroUs;
+  Vec3? _acceleration;
+  int? _accelerationUs;
 
   void start() {
     phase = CalibrationPhase.collecting;
-    progress = 0;
     feedback = null;
-    _anchor = null;
-    _anchorAcceleration = null;
-    _average = null;
-    _startUs = null;
+    _attemptStartUs = null;
+    _gyro = null;
+    _gyroUs = null;
+    _acceleration = null;
+    _accelerationUs = null;
     _previousUs = null;
-    _count = 0;
+    _resetWindow();
   }
 
   /// Drops the reference. [reason] is kept as [feedback] so the UI can say
@@ -58,46 +73,69 @@ class Calibration {
     if (phase == CalibrationPhase.collecting) _reject(reason);
   }
 
+  /// Instantaneous check used by the UI indicator ("parado"/"em movimento").
   static bool isStationary(Vec3 acceleration, Vec3 gyro) =>
       (acceleration.length - standardGravity).abs() <= maxGravityDeviation &&
       gyro.length <= maxAngularVelocity;
 
-  bool _accelerationChanged(Vec3 acceleration) {
-    final anchor = _anchorAcceleration;
-    return anchor != null &&
-        (acceleration - anchor).length > maxAccelerationChange;
+  static double _alpha(int? lastUs, int nowUs) {
+    if (lastUs == null) return 1;
+    final elapsed = nowUs - lastUs;
+    if (elapsed <= 0) return 0;
+    return 1 - math.exp(-elapsed / smoothingUs);
+  }
+
+  void _smoothGyro(Vec3 value, int timestampUs) {
+    if (_gyroUs != null && timestampUs <= _gyroUs!) return;
+    final alpha = _alpha(_gyroUs, timestampUs);
+    final last = _gyro;
+    _gyro = last == null ? value.length : last + (value.length - last) * alpha;
+    _gyroUs = timestampUs;
+  }
+
+  void _smoothAcceleration(Vec3 value, int timestampUs) {
+    if (_accelerationUs != null && timestampUs <= _accelerationUs!) return;
+    final alpha = _alpha(_accelerationUs, timestampUs);
+    final last = _acceleration;
+    _acceleration = last == null ? value : last + (value - last) * alpha;
+    _accelerationUs = timestampUs;
+  }
+
+  String? _movement() {
+    final gyro = _gyro;
+    final acceleration = _acceleration;
+    if (gyro != null && gyro > maxAngularVelocity) {
+      return 'Movimento detectado. Firme o celular e tente novamente.';
+    }
+    if (acceleration != null) {
+      final anchor = _anchorAcceleration;
+      if ((acceleration.length - standardGravity).abs() > maxGravityDeviation ||
+          (anchor != null &&
+              (acceleration - anchor).length > maxAccelerationChange)) {
+        return 'Movimento detectado. Mantenha o celular parado e tente novamente.';
+      }
+    }
+    return null;
   }
 
   void observeReading(SensorReading reading) {
     if (phase != CalibrationPhase.collecting) return;
     final value = reading.vector;
     if (value == null) return;
-    final exceedsLimit = switch (reading.kind) {
-      SensorKind.acceleration =>
-        (value.length - standardGravity).abs() > maxGravityDeviation ||
-            _accelerationChanged(value),
-      SensorKind.angularVelocity => value.length > maxAngularVelocity,
-      SensorKind.orientation => false,
-    };
-    if (exceedsLimit) {
-      _reject(
-        'Movimento detectado. Apoie ou firme o celular e tente novamente.',
-      );
+    switch (reading.kind) {
+      case SensorKind.acceleration:
+        _smoothAcceleration(value, reading.timestampUs);
+      case SensorKind.angularVelocity:
+        _smoothGyro(value, reading.timestampUs);
+      case SensorKind.orientation:
+        return;
     }
+    final movement = _movement();
+    if (movement != null) _restartOrReject(reading.timestampUs, movement);
   }
 
   void addFrame(MotionFrame frame) {
     if (phase != CalibrationPhase.collecting) return;
-    if (!isStationary(frame.acceleration, frame.angularVelocity) ||
-        _accelerationChanged(frame.acceleration)) {
-      _reject(
-        'Movimento detectado. Mantenha o celular imóvel e tente novamente.',
-      );
-      return;
-    }
-    final startUs = _startUs ??= frame.timestampUs;
-    final anchor = _anchor ??= frame.orientation;
-    _anchorAcceleration ??= frame.acceleration;
     final previousUs = _previousUs;
     if (previousUs != null) {
       if (frame.timestampUs <= previousUs) return;
@@ -107,8 +145,24 @@ class Calibration {
       }
     }
     _previousUs = frame.timestampUs;
+    _attemptStartUs ??= frame.timestampUs;
+    // Frames repeat the latest readings; feed them in case the readings were
+    // not observed (the smoothing ignores timestamps it has already seen).
+    _smoothAcceleration(frame.acceleration, frame.timestampUs);
+    _smoothGyro(frame.angularVelocity, frame.timestampUs);
+    final movement = _movement();
+    if (movement != null) {
+      _restartOrReject(frame.timestampUs, movement);
+      return;
+    }
+    final startUs = _startUs ??= frame.timestampUs;
+    final anchor = _anchor ??= frame.orientation;
+    _anchorAcceleration ??= _acceleration;
     if (anchor.angleTo(frame.orientation) > maxOrientationDeviation) {
-      _reject('A orientação mudou durante a medição. Tente novamente.');
+      _restartOrReject(
+        frame.timestampUs,
+        'A orientação mudou durante a medição. Tente novamente.',
+      );
       return;
     }
     _count++;
@@ -124,7 +178,29 @@ class Calibration {
       return;
     }
     reference = _average;
+    feedback = null;
     phase = CalibrationPhase.accepted;
+  }
+
+  /// A movement restarts the steady window while the attempt is young, so a
+  /// wobble costs a few seconds instead of a manual retry.
+  void _restartOrReject(int timestampUs, String reason) {
+    final attemptStartUs = _attemptStartUs ??= timestampUs;
+    if (timestampUs - attemptStartUs >= attemptTimeoutUs) {
+      _reject(reason);
+      return;
+    }
+    _resetWindow();
+    feedback = holdStillFeedback;
+  }
+
+  void _resetWindow() {
+    progress = 0;
+    _anchor = null;
+    _anchorAcceleration = null;
+    _average = null;
+    _startUs = null;
+    _count = 0;
   }
 
   void _reject(String reason) {

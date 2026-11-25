@@ -64,7 +64,8 @@ class OrientationReadout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final angles = orientation?.eulerDegrees;
+    final value = orientation;
+    final angles = value == null ? null : gameAnglesDegrees(value);
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,10 +74,14 @@ class OrientationReadout extends StatelessWidget {
           Text('Orientação', style: Theme.of(context).textTheme.titleMedium),
           Readouts(
             values: {
-              'Pitch': '${decimal(angles?.pitch, 1)}°',
-              'Roll': '${decimal(angles?.roll, 1)}°',
-              'Yaw': '${decimal(angles?.yaw, 1)}°',
+              'Frente/trás': '${decimal(angles?.forward, 1)}°',
+              'Balanço': '${decimal(angles?.roll, 1)}°',
+              'Giro': '${decimal(angles?.yaw, 1)}°',
             },
+          ),
+          Text(
+            'Frente, lado direito para baixo e giro para a direita são positivos.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           if (quaternion) ...[
             const Text('Quaternion'),

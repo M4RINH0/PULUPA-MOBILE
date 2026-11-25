@@ -62,6 +62,10 @@ class MotionController with WidgetsBindingObserver {
       _processor?.orientationSource ?? OrientationSource.unavailable;
   Rotation? get orientation =>
       _processor?.orientationAt(_clock.elapsedMicroseconds);
+
+  /// Rotation in game axes for the diagnostic readouts.
+  Rotation? get gameOrientation =>
+      _processor?.gameOrientationAt(_clock.elapsedMicroseconds);
   Vec3? get acceleration =>
       _processor?.accelerationAt(_clock.elapsedMicroseconds);
   Vec3? get angularVelocity =>
@@ -224,7 +228,7 @@ class MotionController with WidgetsBindingObserver {
         processor.calibration.interrupt();
         gestures.reset();
       }
-      preview.value = processor.orientationAt(time) ?? Rotation.identity;
+      preview.value = processor.previewAt(time) ?? Rotation.identity;
     }
     if (++_ticks % 3 == 0) telemetry.value++;
     if (_wifiClock.elapsed >= const Duration(seconds: 4)) {

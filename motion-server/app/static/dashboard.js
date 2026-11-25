@@ -10,9 +10,12 @@ let actionError = { text: "", at: 0 };
 let latestRequest = 0;
 
 function phoneMatrix(q) {
-  // Convert game axes to the phone's physical axes and then to CSS Y-down.
+  // q is the calibrated rotation in game axes (X right, Y up, +Z toward the
+  // player). The card draws the phone upright facing the viewer, which is the
+  // neutral pose, so q rotates it directly. CSS is X right, Y down, Z toward
+  // the viewer: mirroring Y turns (x, y, z, w) into (-x, y, -z, w).
   const [gx, gy, gz, w] = q;
-  const x = -gx, y = -gz, z = -gy;
+  const x = -gx, y = gy, z = -gz;
   const xx = 2*x*x, yy = 2*y*y, zz = 2*z*z;
   const xy = 2*x*y, xz = 2*x*z, yz = 2*y*z;
   const wx = 2*w*x, wy = 2*w*y, wz = 2*w*z;

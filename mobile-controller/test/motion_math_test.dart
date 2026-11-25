@@ -87,4 +87,63 @@ void main() {
       expect(bypass.eulerDegrees.roll, closeTo(90, 1e-8));
     },
   );
+
+  group('holding postures (portrait upright and sideways landscape)', () {
+    const degree = math.pi / 180;
+    const z = Vec3(0, 0, 1);
+    // Device X right, Y top, Z screen; world X east, Y north, Z up.
+    // Portrait upright, screen toward a player who faces north.
+    final portrait = Rotation.axisAngle(x, 90 * degree);
+    // Same, turned sideways: device top to the player's left.
+    final landscape = Rotation.axisAngle(y, -90 * degree) * portrait;
+
+    for (final facing in [0.0, 37.0, -120.0]) {
+      final world = Rotation.axisAngle(z, facing * degree);
+      for (final (name, hold) in [('portrait', portrait), ('landscape', landscape)]) {
+        final reference = world * hold;
+        final forwardAxis = world.rotate(y);
+        final rightAxis = world.rotate(x);
+        ({double forward, double roll, double yaw}) anglesAfter(Rotation move) =>
+            gameAnglesDegrees(
+              rotationInGameAxes(
+                gravityAlignedRelative(reference, move * reference),
+              ),
+            );
+
+        test('$name facing $facing°: heading follows the back of the phone', () {
+          expect(headingOf(reference).angleTo(world), lessThan(1e-6));
+        });
+
+        test('$name facing $facing°: turn, steer and tilt land on their own axes', () {
+          final turn = anglesAfter(Rotation.axisAngle(z, -20 * degree));
+          expect(turn.yaw, closeTo(20, 1e-6));
+          expect(turn.roll, closeTo(0, 1e-6));
+          expect(turn.forward, closeTo(0, 1e-6));
+
+          final steer = anglesAfter(Rotation.axisAngle(forwardAxis, 15 * degree));
+          expect(steer.roll, closeTo(15, 1e-6));
+          expect(steer.yaw, closeTo(0, 1e-6));
+          expect(steer.forward, closeTo(0, 1e-6));
+
+          final tilt = anglesAfter(Rotation.axisAngle(rightAxis, -15 * degree));
+          expect(tilt.forward, closeTo(15, 1e-6));
+          expect(tilt.roll, closeTo(0, 1e-6));
+          expect(tilt.yaw, closeTo(0, 1e-6));
+        });
+      }
+    }
+
+    test('preview pose shows how the phone is held', () {
+      expect(
+        poseInGameAxes(portrait, headingOf(portrait)).angleTo(Rotation.identity),
+        lessThan(1e-6),
+      );
+      // Top to the left: a quarter turn about the axis toward the player.
+      expect(
+        poseInGameAxes(landscape, headingOf(landscape))
+            .angleTo(Rotation.axisAngle(z, 90 * degree)),
+        lessThan(1e-6),
+      );
+    });
+  });
 }

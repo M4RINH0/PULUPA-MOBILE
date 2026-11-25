@@ -124,19 +124,57 @@ Rotation rotationInGameAxes(Rotation value) =>
     (deviceWorldToGame * value * deviceWorldToGame.inverseUnit).normalized();
 
 // Heading of a device-to-world pose: the yaw about world up (+Z) that takes
-// world +Y to the horizontal direction the player faces. That direction is
-// the device top when the phone lies flat and the back of the phone when it
-// stands upright, so (top - screen normal) projected on the floor covers both.
+// world +Y to the horizontal direction the player faces.
+//
+// Whenever the screen is tilted toward the player (upright, reclined, in
+// portrait or held sideways in landscape) the player looks into the screen,
+// so the facing direction is the back of the phone: -screen normal projected
+// on the floor. Only when the phone lies almost flat (screen within 30° of
+// straight up or down) does that projection vanish; then the device top,
+// which is the top of the portrait-locked UI, is the best guess.
 Rotation headingOf(Rotation pose) {
-  final top = pose.rotate(const Vec3(0, 1, 0));
   final screen = pose.rotate(Vec3.up);
-  var forward = Vec3(top.x - screen.x, top.y - screen.y, 0);
-  if (forward.length < 0.2) {
-    final right = pose.rotate(const Vec3(1, 0, 0));
-    forward = Vec3.up.cross(Vec3(right.x, right.y, 0));
+  var forward = Vec3(-screen.x, -screen.y, 0);
+  if (forward.length < 0.5) {
+    final top = pose.rotate(const Vec3(0, 1, 0));
+    final flatSign = screen.z < 0 ? -1.0 : 1.0;
+    forward = Vec3(top.x, top.y, 0) * flatSign;
+    if (forward.length < 0.2) {
+      final right = pose.rotate(const Vec3(1, 0, 0));
+      forward = Vec3.up.cross(Vec3(right.x, right.y, 0));
+    }
   }
   if (forward.length < 1e-9) return Rotation.identity;
   return Rotation.between(const Vec3(0, 1, 0), forward);
+}
+
+// Device-to-game pose as the player sees the phone: the heading is removed,
+// so game -Z is where the player faces, +Y is up and +Z points back at the
+// player. A phone held upright in portrait with the screen toward the player
+// maps to identity; held sideways it shows sideways.
+Rotation poseInGameAxes(Rotation pose, Rotation heading) =>
+    (deviceWorldToGame * heading.inverseUnit * pose).normalized();
+
+// Intuitive angles of a rotation expressed in game axes (X right, Y up,
+// +Z toward the player), decomposed yaw–pitch–roll (Y, then X, then Z):
+//   forward: tilting the top away from the player is positive;
+//   roll:    lowering the right side is positive;
+//   yaw:     turning to the right is positive.
+({double forward, double roll, double yaw}) gameAnglesDegrees(Rotation g) {
+  const degrees = 180 / math.pi;
+  final x = g.x, y = g.y, z = g.z, w = g.w;
+  final m23 = 2 * (y * z - w * x);
+  final pitch = math.asin((-m23).clamp(-1.0, 1.0));
+  double yaw;
+  double roll;
+  if (m23.abs() < 0.9999) {
+    yaw = math.atan2(2 * (x * z + w * y), 1 - 2 * (x * x + y * y));
+    roll = math.atan2(2 * (x * y + w * z), 1 - 2 * (x * x + z * z));
+  } else {
+    yaw = math.atan2(-2 * (x * z - w * y), 1 - 2 * (y * y + z * z));
+    roll = 0;
+  }
+  return (forward: -pitch * degrees, roll: -roll * degrees, yaw: -yaw * degrees);
 }
 
 // Rotation from the neutral pose to the current pose, expressed in a

@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pulupa_controller/features/calibration/calibration.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pulupa_controller/app/pulupa_app.dart';
 import 'package:pulupa_controller/features/sensors/simulated_sensors.dart';
@@ -56,6 +57,10 @@ void main() {
       await tester.pump();
       source.moving = true;
       await advance(tester, 10);
+      // Movement restarts the steady window instead of failing at once.
+      expect(find.text('Medindo…'), findsOneWidget);
+      expect(find.text(Calibration.holdStillFeedback), findsOneWidget);
+      await advance(tester, 260);
       expect(find.text('Medição interrompida'), findsOneWidget);
       expect(find.text('Recalibrar'), findsOneWidget);
 

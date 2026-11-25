@@ -35,11 +35,13 @@ void main() {
     final processor = MotionProcessor(SimulatedSensors.hardware);
     feed(processor, 0);
     processor.calibration.start();
-    for (var t = 10000; t <= 2000000; t += 10000) {
+    for (var t = 10000; t < 1500000; t += 10000) {
       feed(processor, t);
     }
     expect(processor.calibration.phase, CalibrationPhase.collecting);
-    feed(processor, 2010000);
+    for (var t = 1500000; t <= 2010000; t += 10000) {
+      feed(processor, t);
+    }
     expect(processor.calibration.phase, CalibrationPhase.accepted);
     expect(processor.orientationAt(2010000), Rotation.identity);
     for (final kind in SensorKind.values) {
@@ -63,7 +65,7 @@ void main() {
     expect(processor.rateAt(SensorKind.angularVelocity, 4800000), 0);
   });
 
-  test('an individual gyro spike rejects recalibration even between orientation samples', () {
+  test('an isolated gyro spike does not interrupt recalibration', () {
     final processor = MotionProcessor(SimulatedSensors.hardware);
     processor.calibration.start();
     for (var t = 0; t <= 2000000; t += 10000) {
@@ -77,13 +79,66 @@ void main() {
       const SensorReading.vector(
         SensorKind.angularVelocity,
         2015000,
-        Vec3(0.3, 0, 0),
+        Vec3(1.2, 0, 0),
       ),
       2015000,
     );
     feed(processor, 2020000);
-    expect(processor.calibration.phase, CalibrationPhase.rejected);
-    expect(processor.calibration.reference, same(neutral));
+    expect(processor.calibration.phase, CalibrationPhase.collecting);
+    expect(processor.calibration.feedback, isNull);
+    for (var t = 2030000; t <= 3600000; t += 10000) {
+      feed(processor, t);
+    }
+    expect(processor.calibration.phase, CalibrationPhase.accepted);
+  });
+
+  test('sustained rotation restarts the window and fails only after the timeout', () {
+    final calibration = Calibration()..start();
+    var t = 0;
+    for (; t < 3000000; t += 10000) {
+      calibration.addFrame(
+        MotionFrame(
+          timestampUs: t,
+          orientation: Rotation.identity,
+          acceleration: Vec3.up * standardGravity,
+          angularVelocity: const Vec3(1, 0, 0),
+        ),
+      );
+    }
+    expect(calibration.phase, CalibrationPhase.collecting);
+    expect(calibration.feedback, Calibration.holdStillFeedback);
+    expect(calibration.progress, 0);
+    for (; t <= Calibration.attemptTimeoutUs + 10000; t += 10000) {
+      calibration.addFrame(
+        MotionFrame(
+          timestampUs: t,
+          orientation: Rotation.identity,
+          acceleration: Vec3.up * standardGravity,
+          angularVelocity: const Vec3(1, 0, 0),
+        ),
+      );
+    }
+    expect(calibration.phase, CalibrationPhase.rejected);
+    expect(calibration.reference, isNull);
+  });
+
+  test('hand tremor within the tolerance still calibrates', () {
+    final calibration = Calibration()..start();
+    for (var t = 0; t <= 1600000; t += 10000) {
+      final wobble = math.sin(t / 1e6 * 2 * math.pi * 8);
+      calibration.addFrame(
+        MotionFrame(
+          timestampUs: t,
+          orientation: Rotation.axisAngle(
+            const Vec3(1, 0, 0),
+            3 * math.pi / 180 * wobble,
+          ),
+          acceleration: Vec3.up * standardGravity + Vec3(0.6 * wobble, 0, 0),
+          angularVelocity: Vec3(0.35 * wobble, 0.2, 0),
+        ),
+      );
+    }
+    expect(calibration.phase, CalibrationPhase.accepted);
   });
 
   test('orientation drift, acceleration deviations and interrupted calibration are rejected', () {
@@ -92,7 +147,15 @@ void main() {
     calibration.addFrame(
       staticFrame(
         10000,
-        rotation: Rotation.axisAngle(Vec3.up, 5 * math.pi / 180),
+        rotation: Rotation.axisAngle(Vec3.up, 12 * math.pi / 180),
+      ),
+    );
+    expect(calibration.phase, CalibrationPhase.collecting);
+    expect(calibration.feedback, Calibration.holdStillFeedback);
+    calibration.addFrame(
+      staticFrame(
+        Calibration.attemptTimeoutUs,
+        rotation: Rotation.axisAngle(Vec3.up, 30 * math.pi / 180),
       ),
     );
     expect(calibration.phase, CalibrationPhase.rejected);
@@ -101,7 +164,8 @@ void main() {
     calibration.observeReading(
       const SensorReading.vector(SensorKind.acceleration, 0, Vec3.zero),
     );
-    expect(calibration.phase, CalibrationPhase.rejected);
+    expect(calibration.phase, CalibrationPhase.collecting);
+    expect(calibration.feedback, Calibration.holdStillFeedback);
 
     calibration.start();
     calibration.addFrame(staticFrame(0));

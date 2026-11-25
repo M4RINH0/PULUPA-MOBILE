@@ -30,7 +30,7 @@ cd motion-server
 
 1. Em **Início**, confira o estado do Wi-Fi. Compare com o Wi-Fi ativado e desativado e com o roteador do próprio celular (hotspot) ligado, e aguarde até quatro segundos pela atualização.
 2. Em **Laboratório**, gire o aparelho em cada eixo. Confirme que a interface continua em retrato e que a tela não apaga durante a captura. Verifique a resposta do modelo e compare as taxas reais em 25, 50 e 100 Hz. Em repouso, a norma da aceleração deve ficar próxima de 9,81 m/s².
-3. Em **Calibrar**, segure o aparelho em um ângulo confortável e fique imóvel por dois segundos. A pose centralizada deve aparecer após a confirmação. Teste também com o celular deitado e de lado.
+3. Em **Calibrar**, segure o aparelho como vai jogar (em pé ou deitado de lado pelas laterais) e mantenha-o firme por 1,5 s; tremor normal da mão não deve cancelar a medição. Depois, no **Laboratório**, confira: virar o corpo para a direita aumenta **Giro**, abaixar o lado direito aumenta **Balanço** e inclinar o topo para longe aumenta **Frente/trás**, sem misturar eixos, tanto em pé quanto de lado.
 4. Inicie outra calibração e mexa o aparelho durante a medição. A interface deve recusar a nova referência. Pare o movimento e repita.
 5. Coloque o app em segundo plano e retorne. Confira que o sinal retorna e que é possível iniciar uma nova calibração.
 6. Desative a háptica em Configurações e confirme uma calibração silenciosa. Feche e reabra o app para verificar a persistência das preferências.

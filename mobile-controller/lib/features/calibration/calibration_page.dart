@@ -36,7 +36,9 @@ class CalibrationPage extends StatelessWidget {
             _ => 'Defina sua posição neutra',
           };
           final detail = switch (phase) {
-            CalibrationPhase.collecting => 'Mantenha o celular imóvel.',
+            CalibrationPhase.collecting =>
+              calibration?.feedback ??
+                  'Mantenha o celular firme na posição de jogo.',
             CalibrationPhase.accepted =>
               'O modelo agora acompanha o movimento a partir dessa posição.',
             CalibrationPhase.rejected =>
@@ -48,7 +50,7 @@ class CalibrationPage extends StatelessWidget {
             CalibrationPhase.idle when !canCalibrate =>
               controller.error ??
                   'Segure o aparelho e aguarde o sinal dos sensores.',
-            _ => calibration?.feedback ?? 'Segure o celular como vai jogar e mantenha-o imóvel por dois segundos.',
+            _ => calibration?.feedback ?? 'Segure o celular como vai jogar (em pé ou deitado de lado) e mantenha-o firme por um instante.',
           };
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -95,7 +97,7 @@ class CalibrationPage extends StatelessWidget {
                   onPressed: controller.clearCalibration,
                   child: const Text('Limpar posição neutra'),
                 ),
-              OrientationReadout(orientation: controller.orientation),
+              OrientationReadout(orientation: controller.gameOrientation),
             ],
           );
         },

@@ -239,4 +239,51 @@ void main() {
     expect(processor.frameAt(0), isNull);
     expect(processor.capabilities.canCalibrate, isFalse);
   });
+
+  test('a saved neutral tilt is restored with the heading of the current pose', () {
+    const degree = math.pi / 180;
+    // Held sideways, screen toward the player, facing 30° from north.
+    final hold =
+        Rotation.axisAngle(const Vec3(0, 1, 0), -90 * degree) *
+        Rotation.axisAngle(const Vec3(1, 0, 0), 70 * degree);
+    final before = Rotation.axisAngle(Vec3.up, 30 * degree) * hold;
+    final original = Calibration()
+      ..reference = before
+      ..referenceSource = OrientationSource.systemFusion;
+    final tilt = original.neutralTilt!;
+
+    // After reopening, the sensor's heading origin moved by 110°.
+    final now = Rotation.axisAngle(Vec3.up, 140 * degree) * hold;
+    final restored = Calibration()
+      ..restoreTilt(tilt, OrientationSource.systemFusion);
+    expect(restored.reference, isNull);
+    expect(
+      restored.applyPendingTilt(now, OrientationSource.gyroscopeGravity),
+      isFalse,
+    );
+    expect(restored.applyPendingTilt(now, OrientationSource.systemFusion), isTrue);
+    expect(restored.phase, CalibrationPhase.accepted);
+    expect(restored.feedback, Calibration.restoredFeedback);
+    expect(
+      gravityAlignedRelative(restored.reference!, now).angleTo(Rotation.identity),
+      lessThan(1e-6),
+    );
+    // Tilting from there behaves as before the app was closed.
+    final steer = Rotation.axisAngle(
+          headingOf(now).rotate(const Vec3(0, 1, 0)),
+          15 * degree,
+        ) *
+        now;
+    expect(
+      gameAnglesDegrees(
+        rotationInGameAxes(gravityAlignedRelative(restored.reference!, steer)),
+      ).roll,
+      closeTo(15, 1e-6),
+    );
+    // A new calibration discards a pending restore.
+    final pending = Calibration()
+      ..restoreTilt(tilt, OrientationSource.systemFusion)
+      ..start();
+    expect(pending.applyPendingTilt(now, OrientationSource.systemFusion), isFalse);
+  });
 }

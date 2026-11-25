@@ -34,7 +34,7 @@ cd motion-server
 4. Inicie outra calibração e mexa o aparelho durante a medição. A medição deve recomeçar com "Segure firme" e só falhar se o movimento continuar por 10 s. Pare o movimento e confirme que ela conclui.
 5. Coloque o app em segundo plano e retorne. Confira que o sinal retorna e que é possível iniciar uma nova calibração.
 6. Com o controle conectado a um PC, bloqueie a tela pelo botão de energia por 30 s. O painel deve continuar mostrando Hz e a pose; a notificação "PULUPA conectado" deve aparecer. Desbloqueie e confira que nada foi recalibrado.
-7. Ainda conectado, aperte voltar: o app deve ir para o fundo, sem desconectar. Depois remova o app dos recentes e reabra em menos de 3 minutos: ele deve voltar sozinho à mesma vaga (mesmo número e cor no painel). Recalibre, porque a referência neutra não sobrevive ao fechamento.
+7. Ainda conectado, aperte voltar: o app deve ir para o fundo, sem desconectar. Depois remova o app dos recentes e reabra em menos de 3 minutos: ele deve voltar sozinho à mesma vaga (mesmo número e cor no painel) e já calibrado: segure na posição de jogo ao reabrir, porque o rumo neutro é tirado da pose atual. Recalibre se o giro ficar deslocado.
 8. Desative a háptica em Configurações e confirme uma calibração silenciosa. Feche e reabra o app para verificar a persistência das preferências.
 
 Repita o roteiro de calibração em um emulador com `--dart-define=PULUPA_SIMULATE=true`, usando o botão **Simular movimento** para alternar entre os estados. Valide a orientação e as taxas reais num aparelho físico.

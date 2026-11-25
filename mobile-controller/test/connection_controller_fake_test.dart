@@ -610,6 +610,13 @@ void main() {
       expect(SavedSession.decode('not json'), isNull);
       final public = at(now).encode().replaceFirst('192.168.1.22', '8.8.8.8');
       expect(SavedSession.decode(public), isNull);
+      final tilt = Rotation.axisAngle(const Vec3(1, 0, 0), 1.2);
+      final withTilt = SavedSession.decode(
+        at(now).withNeutral(tilt, 'systemFusion').encode(),
+      )!;
+      expect(withTilt.neutralTilt!.angleTo(tilt), lessThan(1e-9));
+      expect(withTilt.neutralSource, 'systemFusion');
+      expect(SavedSession.decode(at(now).encode())!.neutralTilt, isNull);
     });
   });
 }

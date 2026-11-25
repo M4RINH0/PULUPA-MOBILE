@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../core/motion_math.dart';
 import '../core/theme/pulupa_theme.dart';
 import '../features/calibration/calibration_page.dart';
 import '../features/connection/connected_page.dart';
@@ -54,13 +55,31 @@ class _ControllerShellState extends State<_ControllerShell> {
       latestFrame: () => _controller.latestMotionFrame,
       isCalibrated: () => _controller.isCalibrated,
       onFeedback: _controller.feedback,
-      onSessionChanged: (session) =>
-          unawaited(_native(() => PlatformSensors.saveSession(session?.encode()))),
+      onSessionChanged: _persistSession,
     );
     _controller.status.addListener(_applySendRate);
+    _controller.status.addListener(_saveCalibrationChange);
     _connection.addListener(_applyLiveSession);
     unawaited(_controller.initialize());
     unawaited(_restoreSession());
+  }
+
+  Rotation? _savedReference;
+
+  /// The neutral tilt travels with the session so a reopened app comes back
+  /// calibrated.
+  void _persistSession(SavedSession? session) {
+    final pose = _controller.neutralPose;
+    final value = session?.withNeutral(pose?.tilt, pose?.source.name);
+    _savedReference = _controller.calibration?.reference;
+    unawaited(_native(() => PlatformSensors.saveSession(value?.encode())));
+  }
+
+  void _saveCalibrationChange() {
+    final reference = _controller.calibration?.reference;
+    if (identical(reference, _savedReference)) return;
+    _savedReference = reference;
+    _connection.saveNow();
   }
 
   /// A game is live, or being recovered, with a known player slot.
@@ -102,6 +121,13 @@ class _ControllerShellState extends State<_ControllerShell> {
     }
     if (_connection.phase != ConnectionPhase.idle) return;
     _connection.resumeSaved(saved);
+    final tilt = saved.neutralTilt;
+    final source = OrientationSource.values
+        .where((value) => value.name == saved.neutralSource)
+        .firstOrNull;
+    if (tilt != null && source != null) {
+      _controller.restoreNeutral(tilt, source);
+    }
   }
 
   /// Native calls are conveniences; they never break the session, and tests
@@ -122,6 +148,7 @@ class _ControllerShellState extends State<_ControllerShell> {
   @override
   void dispose() {
     _controller.status.removeListener(_applySendRate);
+    _controller.status.removeListener(_saveCalibrationChange);
     _connection.removeListener(_applyLiveSession);
     if (_live == true) {
       unawaited(_native(() => PlatformSensors.setKeepScreenOn(false)));

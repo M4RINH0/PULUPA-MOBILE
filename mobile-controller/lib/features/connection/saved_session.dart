@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../core/motion_math.dart';
 import '../pairing/pairing_invite.dart';
 
 /// Credentials needed to rejoin the same slot after the app is closed.
@@ -19,6 +20,8 @@ class SavedSession {
     required this.color,
     required this.deviceLabel,
     required this.savedAt,
+    this.neutralTilt,
+    this.neutralSource,
   });
 
   static const maxAge = Duration(seconds: 170);
@@ -33,6 +36,26 @@ class SavedSession {
   final int color;
   final String deviceLabel;
   final DateTime savedAt;
+
+  /// Calibrated tilt (neutral pose without heading) and the name of its
+  /// orientation source, when the player had calibrated.
+  final Rotation? neutralTilt;
+  final String? neutralSource;
+
+  SavedSession withNeutral(Rotation? tilt, String? source) => SavedSession(
+    host: host,
+    port: port,
+    sessionId: sessionId,
+    resume: resume,
+    playerId: playerId,
+    playerKey: playerKey,
+    name: name,
+    color: color,
+    deviceLabel: deviceLabel,
+    savedAt: savedAt,
+    neutralTilt: tilt,
+    neutralSource: tilt == null ? null : source,
+  );
 
   bool isFresh(DateTime now) {
     final age = now.difference(savedAt);
@@ -52,6 +75,10 @@ class SavedSession {
     'color': color,
     'device': deviceLabel,
     'savedAt': savedAt.millisecondsSinceEpoch,
+    if (neutralTilt case final tilt?) ...{
+      'neutral': [tilt.x, tilt.y, tilt.z, tilt.w],
+      'neutralSource': neutralSource,
+    },
   });
 
   /// Returns null for anything malformed; a bad save must never crash startup.
@@ -71,11 +98,24 @@ class SavedSession {
         color: data['color'] as int,
         deviceLabel: data['device'] as String,
         savedAt: DateTime.fromMillisecondsSinceEpoch(data['savedAt'] as int),
+        neutralTilt: _rotation(data['neutral']),
+        neutralSource: data['neutralSource'] as String?,
       );
       session.endpoint; // Validates host and port.
       return session;
     } on Object {
       return null;
     }
+  }
+
+  static Rotation? _rotation(Object? raw) {
+    if (raw is! List || raw.length != 4 || raw.any((v) => v is! num)) {
+      return null;
+    }
+    final values = [for (final v in raw) (v as num).toDouble()];
+    final rotation = Rotation(values[0], values[1], values[2], values[3]);
+    if (!rotation.isUsable) return null;
+    final normalized = rotation.normalized();
+    return (normalized.dot(normalized) - 1).abs() < 1e-6 ? normalized : null;
   }
 }

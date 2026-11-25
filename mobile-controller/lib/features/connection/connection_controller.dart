@@ -726,6 +726,12 @@ class ConnectionController extends ChangeNotifier {
     unawaited(_connect());
   }
 
+  /// Saves now instead of waiting for the periodic refresh (for example
+  /// right after a calibration).
+  void saveNow() {
+    if (phase == ConnectionPhase.connected) _saveSession();
+  }
+
   void _saveSession() {
     final current = player;
     final endpoint = _endpoint;

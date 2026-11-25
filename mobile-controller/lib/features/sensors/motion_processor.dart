@@ -226,6 +226,7 @@ class MotionProcessor {
     if (system) _fusion.reset();
     _usingSystem = system;
     _rawOrientation = raw;
+    if (calibration.applyPendingTilt(raw, source)) _filter.reset();
     _record(SensorKind.orientation, timestamp, receivedUs);
 
     final synchronized =

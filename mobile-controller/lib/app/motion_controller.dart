@@ -78,6 +78,20 @@ class MotionController with WidgetsBindingObserver {
   Rotation? get orientation =>
       _processor?.orientationAt(_clock.elapsedMicroseconds);
 
+  /// Neutral tilt and its orientation source, saved with the session so a
+  /// reopened app does not need a new calibration.
+  ({Rotation tilt, OrientationSource source})? get neutralPose {
+    final tilt = _calibration.neutralTilt;
+    final source = _calibration.referenceSource;
+    if (tilt == null || source == null) return null;
+    return (tilt: tilt, source: source);
+  }
+
+  void restoreNeutral(Rotation tilt, OrientationSource source) {
+    _calibration.restoreTilt(tilt, source);
+    status.value++;
+  }
+
   /// Rotation in game axes for the diagnostic readouts.
   Rotation? get gameOrientation =>
       _processor?.gameOrientationAt(_clock.elapsedMicroseconds);

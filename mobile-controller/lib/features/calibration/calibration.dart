@@ -24,6 +24,8 @@ class Calibration {
   static const maxAccelerationChange = 1.5;
   static const maxOrientationDeviation = 10 * math.pi / 180;
   static const holdStillFeedback = 'Segure firme: recomeçando a medição.';
+  static const restoredFeedback =
+      'Posição neutra restaurada. Recalibre se o giro ficar deslocado.';
 
   Rotation? reference;
 
@@ -44,10 +46,47 @@ class Calibration {
   int? _gyroUs;
   Vec3? _acceleration;
   int? _accelerationUs;
+  Rotation? _pendingTilt;
+  OrientationSource? _pendingSource;
+
+  /// The neutral pose without its heading: how the phone is held relative to
+  /// gravity. Unlike the heading, it stays valid after the sensors restart.
+  Rotation? get neutralTilt {
+    final value = reference;
+    if (value == null) return null;
+    return (headingOf(value).inverseUnit * value).normalized();
+  }
+
+  /// Restores a neutral tilt saved before the app was closed. It is applied
+  /// on the first orientation from [source], taking the heading from the
+  /// current pose: the player is back in position, facing the game.
+  void restoreTilt(Rotation tilt, OrientationSource source) {
+    if (reference != null || phase == CalibrationPhase.collecting) return;
+    _pendingTilt = tilt;
+    _pendingSource = source;
+  }
+
+  /// Called by the processor with each raw orientation; true when a pending
+  /// tilt became the reference.
+  bool applyPendingTilt(Rotation raw, OrientationSource source) {
+    final tilt = _pendingTilt;
+    if (tilt == null || source != _pendingSource) return false;
+    _pendingTilt = null;
+    _pendingSource = null;
+    if (reference != null || phase == CalibrationPhase.collecting) return false;
+    reference = (headingOf(raw) * tilt).normalized();
+    referenceSource = source;
+    phase = CalibrationPhase.accepted;
+    progress = 0;
+    feedback = restoredFeedback;
+    return true;
+  }
 
   void start() {
     phase = CalibrationPhase.collecting;
     feedback = null;
+    _pendingTilt = null;
+    _pendingSource = null;
     _attemptStartUs = null;
     _gyro = null;
     _gyroUs = null;
@@ -60,6 +99,8 @@ class Calibration {
   /// Drops the reference. [reason] is kept as [feedback] so the UI can say
   /// why the neutral pose was lost.
   void clear({String? reason}) {
+    _pendingTilt = null;
+    _pendingSource = null;
     reference = null;
     referenceSource = null;
     phase = CalibrationPhase.idle;

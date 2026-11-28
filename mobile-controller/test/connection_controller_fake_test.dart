@@ -196,6 +196,65 @@ void main() {
     await h.dispose(tester);
   });
 
+  testWidgets('buttons reach the PC once per change and return after a drop', (
+    tester,
+  ) async {
+    final h = Harness();
+    h.pairManually();
+    await tester.pump();
+    // Before the welcome nothing is sent, but the hold is remembered.
+    h.link.setButton('a', true, source: 'volume');
+    expect(h.server.last.ofType('button'), isEmpty);
+    h.server.last.welcome();
+    await tester.pump();
+    List<Map<String, dynamic>> buttons() => [
+      for (final socket in h.server.sockets) ...socket.ofType('button'),
+    ];
+    expect(buttons(), hasLength(1));
+    final first = buttons().single;
+    expect(first.keys.toSet(), {
+      'v', 'type', 'session', 'player', 'button', 'pressed', 't_us',
+    });
+    expect(
+      (first['session'], first['player'], first['button'], first['pressed']),
+      (_session, 2, 'a', true),
+    );
+    expect(first['t_us'], isA<int>());
+
+    // A second source holding the same button changes nothing on the wire,
+    // and the button comes up only when both let go.
+    h.link.setButton('a', true, source: 'screen');
+    h.link.setButton('a', false, source: 'volume');
+    expect(buttons(), hasLength(1));
+    expect(h.link.isHeld('a'), isTrue);
+    h.link.setButton('a', false, source: 'screen');
+    expect(buttons().last['pressed'], isFalse);
+    expect(h.link.isHeld('a'), isFalse);
+
+    // Unknown buttons are ignored.
+    h.link.setButton('c', true);
+    expect(buttons(), hasLength(2));
+
+    // Held through a drop: sent again right after the new welcome.
+    h.link.setButton('b', true);
+    expect(buttons(), hasLength(3));
+    h.server.last.serverClose(CloseCodes.peerTimeout);
+    await tester.pump(const Duration(milliseconds: 500));
+    h.server.last.welcome(resume: _nextToken);
+    await tester.pump();
+    final resent = h.server.last.ofType('button').single;
+    expect((resent['button'], resent['pressed']), ('b', true));
+
+    // Closing the screen lets go of what it held; leaving forgets everything.
+    h.link.releaseButtons(source: 'screen');
+    expect(h.link.isHeld('b'), isFalse);
+    expect(h.server.last.ofType('button').last['pressed'], isFalse);
+    h.link.setButton('a', true);
+    h.link.disconnect();
+    expect(h.link.isHeld('a'), isFalse);
+    await h.dispose(tester);
+  });
+
   testWidgets('first pairing gives up after its 20 s window', (tester) async {
     final h = Harness()..server.refuse = true;
     h.pairManually();

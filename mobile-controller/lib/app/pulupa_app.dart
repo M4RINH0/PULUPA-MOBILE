@@ -8,6 +8,7 @@ import '../core/theme/pulupa_theme.dart';
 import '../features/calibration/calibration_page.dart';
 import '../features/connection/connected_page.dart';
 import '../features/connection/connection_controller.dart';
+import '../features/controls/controller_pad_page.dart';
 import '../features/diagnostics/lab_page.dart';
 import '../features/home/home_page.dart';
 import '../features/pairing/pairing_page.dart';
@@ -46,6 +47,7 @@ class _ControllerShellState extends State<_ControllerShell> {
   late final ConnectionController _connection;
   int _page = 0;
   bool? _live;
+  StreamSubscription<({String button, bool pressed})>? _volumeKeys;
 
   @override
   void initState() {
@@ -99,8 +101,32 @@ class _ControllerShellState extends State<_ControllerShell> {
     _controller.keepCaptureInBackground = enabled;
     unawaited(_native(() => PlatformSensors.setKeepScreenOn(enabled)));
     unawaited(_native(() => PlatformSensors.setBackgroundSession(enabled)));
+    _listenVolumeKeys(enabled);
     if (mounted) setState(() {});
   }
+
+  /// While a game is live the volume keys are the game's buttons (− is A,
+  /// + is B) and stop changing the volume.
+  void _listenVolumeKeys(bool enabled) {
+    if (!enabled) {
+      unawaited(_volumeKeys?.cancel());
+      _volumeKeys = null;
+      _connection.releaseButtons(source: 'volume');
+      return;
+    }
+    _volumeKeys ??= PlatformSensors.volumeButtons().listen(
+      (key) => _connection.setButton(key.button, key.pressed, source: 'volume'),
+      // No native channel (tests, other platforms): the screen buttons remain.
+      onError: (Object _) {},
+    );
+  }
+
+  void _openPad() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) =>
+          ControllerPadPage(motion: _controller, connection: _connection),
+    ),
+  );
 
   /// Rejoins the slot if the app was closed mid-game within the server's
   /// reservation window.
@@ -150,6 +176,7 @@ class _ControllerShellState extends State<_ControllerShell> {
     _controller.status.removeListener(_applySendRate);
     _controller.status.removeListener(_saveCalibrationChange);
     _connection.removeListener(_applyLiveSession);
+    unawaited(_volumeKeys?.cancel());
     if (_live == true) {
       unawaited(_native(() => PlatformSensors.setKeepScreenOn(false)));
       unawaited(_native(() => PlatformSensors.setBackgroundSession(false)));
@@ -229,6 +256,7 @@ class _ControllerShellState extends State<_ControllerShell> {
                 motion: _controller,
                 connection: _connection,
                 calibrate: () => _select(1),
+                openPad: _openPad,
               ),
       ),
     },

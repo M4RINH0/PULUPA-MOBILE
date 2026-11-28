@@ -28,7 +28,7 @@ O servidor responde com `welcome` contendo `session`, `player`, `player_key`, `n
 ### Reconexão e substituição
 
 - **Assumir a conexão.** Um `hello` com `resume` válido é aceito mesmo que o servidor ainda considere o jogador conectado (por exemplo, o Wi-Fi caiu e o socket antigo ainda não expirou). O servidor passa o jogador para o novo socket, renova o token de reconexão e encerra o socket antigo com **4001**, sem afetar o jogador. O slot e o estado continuam; a verificação de ordem de `seq` e `t_us` recomeça no novo socket, porque um app reaberto reinicia a numeração. O código `resume_pending` está obsoleto e não é mais emitido.
-- **Carência do token.** Ao renovar, o servidor guarda o token apresentado como token anterior. Um `hello` com o token atual ou o anterior é aceito, o que cobre um `welcome` perdido no caminho. O token anterior é descartado assim que o servidor recebe no novo socket qualquer mensagem válida (`motion`, `ping`, `pong` ou `calibration`), prova de que o `welcome` chegou. Por isso o cliente deve sempre guardar o `resume` do último `welcome` recebido, de preferência em armazenamento persistente: o app oficial salva `host`, `port`, `session` e `resume` e, se for reaberto dentro da reserva de 180 s, reconecta sozinho na mesma vaga.
+- **Carência do token.** Ao renovar, o servidor guarda o token apresentado como token anterior. Um `hello` com o token atual ou o anterior é aceito, o que cobre um `welcome` perdido no caminho. O token anterior é descartado assim que o servidor recebe no novo socket qualquer mensagem válida (`motion`, `button`, `ping`, `pong` ou `calibration`), prova de que o `welcome` chegou. Por isso o cliente deve sempre guardar o `resume` do último `welcome` recebido, de preferência em armazenamento persistente: o app oficial salva `host`, `port`, `session` e `resume` e, se for reaberto dentro da reserva de 180 s, reconecta sozinho na mesma vaga.
 - **Primeiro pareamento idempotente.** O cliente gera um `attempt` aleatório por intenção de pareamento (uma leitura de QR ou um código digitado) e o repete nas novas tentativas desse mesmo pareamento enquanto não receber `welcome`. Se um `hello` com `ticket` ou `code` válido traz o `attempt` de um jogador existente, o servidor devolve esse jogador (assumindo a conexão como acima e renovando `resume`) em vez de ocupar outro slot. Depois do `welcome`, use `resume`. `hello` sem `attempt` continua válido.
 - Se o envio do `welcome` falhar para um jogador recém-criado, o servidor o remove e libera o slot.
 
@@ -94,6 +94,31 @@ Pacotes repetidos ou mais antigos que o último aplicado recebem `accepted: true
 
 Erros de protocolo depois do `welcome` (JSON inválido, tipo desconhecido, movimento recusado) são tolerados até 3 **consecutivos**: o terceiro seguido gera `error` e 1008. Qualquer mensagem válida processada zera a contagem.
 
+## Botões
+
+O celular tem dois botões lógicos. O jogo decide o que cada um faz; o protocolo só leva quando são apertados e soltos.
+
+| `button` | Uso previsto |
+| --- | --- |
+| `a` | Principal. Segurar e soltar comanda a ação (no boliche: segura, balança o braço e solta para lançar). Nos menus, aperta o botão sob o ponteiro. |
+| `b` | Secundário. Nos menus, traz o ponteiro de volta ao centro. |
+
+O app oficial liga o `a` a um botão grande na tela e, no Android, à tecla de volume −; o `b` a um botão menor na tela e à tecla de volume +. As teclas de volume só chegam ao app com ele aberto e a tela ligada.
+
+Cada mudança de estado gera uma mensagem com exatamente estes campos:
+
+```json
+{"v":1,"type":"button","session":"dev_session_1234567890","player":2,"button":"a","pressed":true,"t_us":52687000}
+```
+
+| Campo | Convenção |
+| --- | --- |
+| `button` | `"a"` ou `"b"`. |
+| `pressed` | `true` ao apertar, `false` ao soltar. |
+| `t_us` | Instante do toque no mesmo relógio do `t_us` de `motion`, para o jogo saber em que ponto do movimento o botão mudou. Inteiro em `0..2^53−1`. |
+
+Não há confirmação. O servidor guarda o último estado de cada botão e o inclui no snapshot. Ao perder a conexão ou ao assumir um socket novo (reconexão), todos os botões passam a soltos: um botão nunca fica preso por queda de rede. Por isso o cliente reenvia, depois de cada `welcome`, os botões que ainda estiverem apertados. Uma mensagem fora do formato recebe `error` com `invalid_button` e conta no orçamento de erros consecutivos.
+
 ## Controle e métricas
 
 - `calibration` leva `calibrated` do cliente ao servidor. O servidor devolve `calibration_ack` com o estado reconhecido.
@@ -122,6 +147,7 @@ Erros de protocolo depois do `welcome` (JSON inválido, tipo desconhecido, movim
 | `invalid_message` | JSON, envelope, campos ou `attempt` inválidos. No `hello` é fatal; depois do `welcome` é tolerado até 3 erros consecutivos. | Não sem corrigir o cliente. |
 | `session_full` | Quatro jogadores já ocupam a sessão. | Não automaticamente. |
 | `rate_limit` | Taxa de mensagens acima do limite. | Sim, com `resume`, reduzindo a taxa. |
+| `invalid_button` | Mensagem `button` fora do formato. | Não é fatal; corrija a mensagem. |
 | `invalid_motion` | Pacote de movimento recusado. Vem em `motion_ack` (`accepted: false`) ou, sem `seq` inteiro, em `error`. | Não é fatal; corrija o pacote. |
 | `resume_pending` | **Obsoleto.** Não é mais emitido (o servidor assume a conexão). | Clientes antigos tratavam como transitório. |
 
@@ -147,4 +173,4 @@ O transporte é `ws://` em texto claro. Mensagens, ticket, código e token de re
 
 ## Consulta pelo jogo (Unity 6)
 
-Em `ws://127.0.0.1:8765/ws/game`, envie `{"v":1,"type":"snapshot"}` e aguarde a resposta antes de consultar de novo. A resposta contém `v`, `type: "snapshot"`, `session` e a lista `players`. Cada elemento inclui `player`, `player_key`, `name`, `color`, `connected`, `calibrated` e o último objeto `motion` válido, ou `null`. Esse objeto expira em 350 ms. Os valores chegam na convenção do fio descrita em [Movimento](#movimento); o cliente Unity em [unity/PulupaMotionClient.cs](unity/PulupaMotionClient.cs) converte para os eixos do Unity. Veja a [integração em Unity 6](../docs/unity.md) e [unity/README.md](unity/README.md).
+Em `ws://127.0.0.1:8765/ws/game`, envie `{"v":1,"type":"snapshot"}` e aguarde a resposta antes de consultar de novo. A resposta contém `v`, `type: "snapshot"`, `session` e a lista `players`. Cada elemento inclui `player`, `player_key`, `name`, `color`, `connected`, `calibrated`, `buttons` (`{"a": bool, "b": bool}`, tudo `false` se desconectado) e o último objeto `motion` válido, ou `null`. Esse objeto expira em 350 ms. Os valores chegam na convenção do fio descrita em [Movimento](#movimento); o cliente Unity em [unity/PulupaMotionClient.cs](unity/PulupaMotionClient.cs) converte para os eixos do Unity. Veja a [integração em Unity 6](../docs/unity.md) e [unity/README.md](unity/README.md).

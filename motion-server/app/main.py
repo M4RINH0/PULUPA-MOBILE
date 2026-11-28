@@ -242,6 +242,13 @@ def create_app(lan_ip: str, port: int = 8765, clock=time.monotonic) -> FastAPI:
                             "motion_ack", seq=message["seq"], accepted=True,
                             packets=player.packets, missing=player.missing,
                         ))
+                elif kind == "button":
+                    try:
+                        player.press(message, active.id)
+                    except ProtocolError as error:
+                        await reject(str(error))
+                    else:
+                        valid()
                 elif kind == "calibration" and type(message.get("calibrated")) is bool:
                     valid()
                     if player.calibrated != message["calibrated"]:

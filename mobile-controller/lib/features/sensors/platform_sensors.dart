@@ -6,6 +6,25 @@ import 'sensor_source.dart';
 class PlatformSensors implements SensorSource {
   static const _device = MethodChannel('pulupa/device');
   static const _imu = EventChannel('pulupa/imu');
+  static const _buttons = EventChannel('pulupa/buttons');
+
+  /// The volume keys as the game's buttons while listened to: volume − is
+  /// `a`, volume + is `b`. While listening the keys no longer change the
+  /// volume. Android only; elsewhere the stream fails with
+  /// MissingPluginException.
+  static Stream<({String button, bool pressed})> volumeButtons() => _buttons
+      .receiveBroadcastStream()
+      .where(
+        (event) =>
+            event is List &&
+            event.length == 2 &&
+            (event[0] == 'a' || event[0] == 'b') &&
+            event[1] is bool,
+      )
+      .map((event) {
+        final values = event as List;
+        return (button: values[0] as String, pressed: values[1] as bool);
+      });
 
   @override
   Future<SensorCapabilities> capabilities() async {

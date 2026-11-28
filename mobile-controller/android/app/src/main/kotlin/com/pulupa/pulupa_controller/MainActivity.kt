@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -24,7 +25,11 @@ import java.net.NetworkInterface
 class MainActivity : FlutterActivity() {
     private var deviceChannel: MethodChannel? = null
     private var sensorChannel: EventChannel? = null
+    private var buttonChannel: EventChannel? = null
     private var imu: ImuStream? = null
+
+    /** Recebe as teclas de volume como botões enquanto o Dart escuta (jogo conectado). */
+    private var buttonSink: EventChannel.EventSink? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -33,6 +38,17 @@ class MainActivity : FlutterActivity() {
         imu = sensors
         sensorChannel = EventChannel(messenger, "pulupa/imu").apply {
             setStreamHandler(sensors)
+        }
+        buttonChannel = EventChannel(messenger, "pulupa/buttons").apply {
+            setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    buttonSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    buttonSink = null
+                }
+            })
         }
         val preferences = getSharedPreferences("controller", Context.MODE_PRIVATE)
         // Separado das configurações: "loadSettings" devolve tudo de "controller".
@@ -96,6 +112,26 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Com um jogo conectado, volume − é o botão A e volume + é o B. A tecla é
+     * consumida (o volume não muda) e chega ao Dart como [botão, apertado].
+     * Repetições de tecla segurada são ignoradas: só a descida e a subida contam.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val sink = buttonSink
+        val button = when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_DOWN -> "a"
+            KeyEvent.KEYCODE_VOLUME_UP -> "b"
+            else -> null
+        }
+        if (sink == null || button == null) return super.dispatchKeyEvent(event)
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0) sink.success(listOf(button, true))
+            KeyEvent.ACTION_UP -> sink.success(listOf(button, false))
+        }
+        return true
     }
 
     private var backgroundSession = false
@@ -174,9 +210,12 @@ class MainActivity : FlutterActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         imu?.stop()
         sensorChannel?.setStreamHandler(null)
+        buttonChannel?.setStreamHandler(null)
         deviceChannel?.setMethodCallHandler(null)
         imu = null
         sensorChannel = null
+        buttonChannel = null
+        buttonSink = null
         deviceChannel = null
         super.cleanUpFlutterEngine(flutterEngine)
     }

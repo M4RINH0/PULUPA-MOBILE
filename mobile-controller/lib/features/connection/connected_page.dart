@@ -12,11 +12,15 @@ class ConnectedPage extends StatelessWidget {
     required this.motion,
     required this.connection,
     required this.calibrate,
+    required this.openPad,
   });
 
   final MotionController motion;
   final ConnectionController connection;
   final VoidCallback calibrate;
+
+  /// Opens the full-screen controller with the A and B buttons.
+  final VoidCallback openPad;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +70,13 @@ class ConnectedPage extends StatelessWidget {
             ],
           ),
         ),
+        if (connected)
+          FilledButton.icon(
+            onPressed: openPad,
+            icon: const Icon(Icons.sports_esports_rounded),
+            label: const Text('Abrir controle'),
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 64)),
+          ),
         if (connection.error case final error?)
           Panel(
             child: StatusLine(
@@ -87,10 +98,10 @@ class ConnectedPage extends StatelessWidget {
         if (connected)
           const Panel(
             child: StatusLine(
-              icon: Icons.lock_outline_rounded,
-              label: 'Pode bloquear a tela',
+              icon: Icons.smart_button_rounded,
+              label: 'Botões A e B',
               detail:
-                  'O controle continua enviando com a tela bloqueada, sem risco de toques acidentais. Se fechar o app sem querer, abra de novo em até 3 minutos para voltar à mesma vaga.',
+                  'Use o controle em tela cheia ou as teclas de volume: − é o A, + é o B. Com a tela bloqueada o movimento continua indo para o PC, mas os botões não. Se fechar o app sem querer, abra de novo em até 3 minutos para voltar à mesma vaga.',
             ),
           ),
         ValueListenableBuilder(

@@ -7,7 +7,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
-from .protocol import ATTEMPT, ProtocolError, TOKEN, device_label, envelope, player_name, validate_motion
+from .protocol import (
+    ATTEMPT, BUTTONS, ProtocolError, TOKEN, device_label, envelope, player_name, validate_button, validate_motion,
+)
 
 COLORS = ("#345CFF", "#FF55A5", "#FFD928", "#8B5CF6")
 SESSION_SECONDS = 7200
@@ -61,6 +63,7 @@ class Player:
     last_timestamp: int = -1
     packets: int = 0
     missing: int = 0
+    buttons: dict = field(default_factory=lambda: dict.fromkeys(BUTTONS, False))
     arrivals: deque = field(default_factory=lambda: deque(maxlen=160))
     rtts: deque = field(default_factory=lambda: deque(maxlen=40))
 
@@ -93,6 +96,8 @@ class Player:
         # ordem só importa dentro de um mesmo socket, e o antigo é descartado.
         self.last_seq = -1
         self.last_timestamp = -1
+        # O app reenvia o que estiver segurando assim que o welcome chega.
+        self.release_buttons()
         self.arrivals.clear()
         self.rtts.clear()
 
@@ -115,12 +120,24 @@ class Player:
         self.arrivals.append(now)
         return True
 
+    def press(self, message: dict, session_id: str) -> bool:
+        """Aplica um `button`. Devolve True quando o estado do botão mudou."""
+        button = validate_button(message, session_id, self.id)
+        changed = self.buttons[button["button"]] != button["pressed"]
+        self.buttons[button["button"]] = button["pressed"]
+        return changed
+
+    def release_buttons(self):
+        """Sem conexão ninguém segura botão: solta todos."""
+        self.buttons = dict.fromkeys(BUTTONS, False)
+
     def snapshot(self, now: float, metrics=False) -> dict:
         live = self.connected and now - self.last_motion_at <= FRAME_SECONDS
         result = {
             "player": self.id, "name": self.name, "color": self.color, "player_key": self.key,
             "connected": self.connected, "calibrated": self.calibrated,
             "motion": self.latest if live and self.latest and self.latest["valid"] else None,
+            "buttons": dict(self.buttons) if self.connected else dict.fromkeys(BUTTONS, False),
         }
         if metrics:
             while self.arrivals and now - self.arrivals[0] > 2:
@@ -249,6 +266,7 @@ class Session:
             player.connected = False
             player.disconnected_at = self.clock()
             player.latest = None
+            player.release_buttons()
 
     def snapshots(self, metrics=False) -> list[dict]:
         now = self.clock()

@@ -22,6 +22,10 @@ MOTION_KEYS = {
     "v", "type", "session", "player", "seq", "t_us", "q", "accel", "gyro",
     "calibrated", "valid",
 }
+BUTTON_KEYS = {"v", "type", "session", "player", "button", "pressed", "t_us"}
+# "a": o botão principal (segurar e soltar para arremessar, clicar nos menus).
+# "b": o secundário (recentralizar o ponteiro, voltar).
+BUTTONS = ("a", "b")
 
 
 class ProtocolError(ValueError):
@@ -113,3 +117,16 @@ def validate_motion(message: dict, session_id: str, player_id: int) -> dict:
     _vector(message["accel"], 3, 500)
     _vector(message["gyro"], 3, 100)
     return {**message, "q": [n / norm for n in q]}
+
+
+def validate_button(message: dict, session_id: str, player_id: int) -> dict:
+    if (
+        message.keys() != BUTTON_KEYS
+        or type(message["v"]) is not int or message["v"] != VERSION or message["type"] != "button"
+        or type(message["session"]) is not str or message["session"] != session_id
+        or not integer(message["player"], 1, 4) or message["player"] != player_id
+        or type(message["button"]) is not str or message["button"] not in BUTTONS
+        or type(message["pressed"]) is not bool or not integer(message["t_us"])
+    ):
+        raise ProtocolError("invalid_button")
+    return message

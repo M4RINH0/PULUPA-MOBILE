@@ -435,6 +435,8 @@ namespace Pulupa.Motion
                     Color = (string)entry["color"] ?? string.Empty,
                     Connected = (bool?)entry["connected"] ?? false,
                     Calibrated = (bool?)entry["calibrated"] ?? false,
+                    ButtonA = (bool?)(entry["buttons"] as JObject)?["a"] ?? false,
+                    ButtonB = (bool?)(entry["buttons"] as JObject)?["b"] ?? false,
                     Motion = ParseMotion(entry["motion"] as JObject),
                 });
             }
@@ -526,6 +528,8 @@ namespace Pulupa.Motion
             public string Color;
             public bool Connected;
             public bool Calibrated;
+            public bool ButtonA;
+            public bool ButtonB;
             public RawMotion Motion;
 
             // Executa na thread principal (ColorUtility e structs do Unity).
@@ -540,6 +544,8 @@ namespace Pulupa.Motion
                     Color = ColorUtility.TryParseHtmlString(Color, out var parsed) ? parsed : UnityEngine.Color.white,
                     Connected = Connected,
                     Calibrated = Calibrated,
+                    ButtonA = ButtonA,
+                    ButtonB = ButtonB,
                 };
                 if (Motion != null)
                 {

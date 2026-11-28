@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import PENDING_PER_HOST, create_app
-from app.protocol import ProtocolError, decode, device_label, envelope, player_name, validate_motion
+from app.protocol import (
+    ProtocolError, decode, device_label, envelope, player_name, validate_button, validate_motion,
+)
 from app.session import (
     HOST_FAILURES, INVITE_FAILURES, INVITE_SECONDS, RESUME_SECONDS, SESSION_SECONDS, Session, TokenBucket,
 )
@@ -29,6 +31,12 @@ def packet(session, player, sequence=0, **fields):
             "calibrated": True, "valid": True, **fields,
         },
     )
+
+
+def button(session, player, name="a", pressed=True, t_us=500, **fields):
+    return envelope("button", **{
+        "session": session, "player": player, "button": name, "pressed": pressed, "t_us": t_us, **fields,
+    })
 
 
 def wait_for(client, message_type, limit=50, seconds=10):
@@ -75,6 +83,20 @@ class ValidationTests(unittest.TestCase):
         ):
             with self.subTest(changes=changes), self.assertRaises(ProtocolError):
                 validate_motion({**valid, **changes}, "session", 1)
+
+    def test_button_shape(self):
+        valid = button("session", 1)
+        self.assertEqual(validate_button(valid, "session", 1), valid)
+        for changes in (
+            {"player": 2}, {"session": "outra"}, {"button": "c"}, {"button": 1}, {"pressed": 1},
+            {"pressed": None}, {"t_us": -1}, {"t_us": 1.5}, {"extra": True},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ProtocolError):
+                validate_button({**valid, **changes}, "session", 1)
+        missing = dict(valid)
+        del missing["t_us"]
+        with self.assertRaises(ProtocolError):
+            validate_button(missing, "session", 1)
 
     def test_accepts_invalid_sample_marker(self):
         marker = packet("session_id_1234567890ab", 1, valid=False, calibrated=False, accel=[0, 0, 0])
@@ -355,6 +377,38 @@ class ServerTests(unittest.TestCase):
             stale.send_json(envelope("hello", name="Teste", session=session_id, resume=welcome["resume"]))
             self.assertEqual(wait_for(stale, "error")["code"], "invalid_invite")
             self.assertEqual(wait_close(stale), 1008)
+
+    def test_buttons_reach_the_game_and_release_on_drop(self):
+        def buttons():
+            game.send_json(envelope("snapshot"))
+            return game.receive_json()["players"][0]["buttons"]
+
+        with self.http.websocket_connect("ws://127.0.0.1/ws/game") as game:
+            with self.http.websocket_connect(URL) as ws:
+                welcome = self.hello(ws)
+                session_id, player = welcome["session"], welcome["player"]
+                self.assertEqual(buttons(), {"a": False, "b": False})
+                ws.send_json(button(session_id, player, "a", True, 1000))
+                ws.send_json(envelope("ping", id=1))
+                wait_for(ws, "pong")
+                self.assertEqual(buttons(), {"a": True, "b": False})
+                ws.send_json(button(session_id, player, "b", True, 1001))
+                ws.send_json(button(session_id, player, "a", False, 1002))
+                ws.send_json(envelope("ping", id=2))
+                wait_for(ws, "pong")
+                self.assertEqual(buttons(), {"a": False, "b": True})
+
+                # Inválido: não é fatal sozinho e não muda o estado.
+                ws.send_json(button(session_id, player, "x", True))
+                self.assertEqual(wait_for(ws, "error")["code"], "invalid_button")
+                self.assertEqual(buttons(), {"a": False, "b": True})
+            # Caiu segurando: o jogo não pode ver o botão preso.
+            self.assertEqual(buttons(), {"a": False, "b": False})
+
+            with self.http.websocket_connect(URL) as ws:
+                resumed = self.hello(ws, session=session_id, resume=welcome["resume"])
+                self.assertEqual(resumed["player"], player)
+                self.assertEqual(buttons(), {"a": False, "b": False})
 
     def test_invalid_sample_keeps_snapshot_motion_empty(self):
         with self.http.websocket_connect(URL) as ws:

@@ -162,6 +162,64 @@ class ConnectionController extends ChangeNotifier {
   bool _disposed = false;
   int _sendHz = 60;
 
+  /// The game's two buttons on the wire: `a` (main) and `b` (secondary).
+  static const buttons = ['a', 'b'];
+
+  // Who holds each button: the screen, the volume keys, or both. A button is
+  // down while anyone holds it, so letting go of one does not release it.
+  final _holders = {for (final button in buttons) button: <String>{}};
+
+  /// The button is down, by any source.
+  bool isHeld(String button) => _holders[button]?.isNotEmpty ?? false;
+
+  /// Presses or releases [button] for one [source] (for example `screen` or
+  /// `volume`). The PC hears about it only when the button as a whole goes
+  /// down or comes up. Held buttons are sent again after a reconnection,
+  /// because the PC lets go of everything when a link drops.
+  void setButton(String button, bool pressed, {String source = 'screen'}) {
+    final holders = _holders[button];
+    if (holders == null) return;
+    final before = holders.isNotEmpty;
+    if (pressed) {
+      holders.add(source);
+    } else {
+      holders.remove(source);
+    }
+    final after = holders.isNotEmpty;
+    if (before == after) return;
+    _sendButton(button, after);
+    notifyListeners();
+  }
+
+  /// Lets go of every button held by [source] (its screen closed, say).
+  void releaseButtons({required String source}) {
+    for (final button in buttons) {
+      if (_holders[button]!.contains(source)) {
+        setButton(button, false, source: source);
+      }
+    }
+  }
+
+  void _sendButton(String button, bool pressed) {
+    final active = player;
+    if (phase != ConnectionPhase.connected || active == null) return;
+    _send('button', {
+      'session': active.sessionId,
+      'player': active.id,
+      'button': button,
+      'pressed': pressed,
+      't_us': _buttonTime(),
+    });
+  }
+
+  /// The press time on the same clock as the motion `t_us`, so the PC knows
+  /// where in the swing the button changed.
+  int _buttonTime() {
+    final frame = latestFrame();
+    final sensor = frame == null ? 0 : frame.timestampUs + _timestampShiftUs;
+    return max(0, max(sensor, _lastSentTUs));
+  }
+
   bool get busy =>
       phase == ConnectionPhase.connecting || phase == ConnectionPhase.retrying;
   double? get rttMean =>
@@ -407,6 +465,10 @@ class ConnectionController extends ChangeNotifier {
       _policyCloses = 0;
     });
     _startSending(generation);
+    // The PC let go of everything when the previous link dropped.
+    for (final button in buttons) {
+      if (isHeld(button)) _sendButton(button, true);
+    }
     _ping(generation);
     _pingTimer = Timer.periodic(
       const Duration(seconds: 2),
@@ -775,6 +837,9 @@ class ConnectionController extends ChangeNotifier {
     _lastFreshUs = null;
     _lastSentTUs = -1;
     _timestampShiftUs = 0;
+    for (final holders in _holders.values) {
+      holders.clear();
+    }
     sentPackets = 0;
     error = null;
     phase = ConnectionPhase.idle;

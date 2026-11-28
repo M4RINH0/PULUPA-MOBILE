@@ -42,6 +42,10 @@ namespace Pulupa.Motion
         /// <summary>False enquanto o servidor reserva o slot para reconexão.</summary>
         public bool Connected { get; internal set; }
         public bool Calibrated { get; internal set; }
+        /// <summary>Botão A (principal) seguro no celular. Falso quando desconectado.</summary>
+        public bool ButtonA { get; internal set; }
+        /// <summary>Botão B (secundário) seguro no celular. Falso quando desconectado.</summary>
+        public bool ButtonB { get; internal set; }
         /// <summary>Nulo quando o celular informa valid:false, os dados estão velhos (&gt;350 ms) ou desconectado.</summary>
         public PulupaMotion? Motion { get; internal set; }
     }
